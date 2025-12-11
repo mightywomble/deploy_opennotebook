@@ -1,0 +1,32 @@
+# group_vars/all.yml
+# -----------------------------------------------------------------------------
+# CONFIGURATION VARIABLES
+# -----------------------------------------------------------------------------
+
+# The directory on the server where the application will be installed
+install_dir: "/opt/open-notebook"
+
+# The IP address of your server. 
+# We use Ansible's auto-discovered variable by default, but you can hardcode it (e.g., "192.168.1.100")
+server_ip: "{{ ansible_default_ipv4.address }}"
+
+# Ports to expose
+frontend_port: "8502"
+backend_port: "5055"
+
+# -----------------------------------------------------------------------------
+# API KEYS (REQUIRED)
+# -----------------------------------------------------------------------------
+# You must provide at least one LLM provider key.
+# UNCOMMENT and PASTE your keys below.
+
+# openai_api_key: "sk-..."
+# google_api_key: "AIza..."
+# anthropic_api_key: "sk-ant-..."
+
+# -----------------------------------------------------------------------------
+# DATABASE SETTINGS (Default for Single Container)
+# -----------------------------------------------------------------------------
+surreal_user: "root"
+surreal_pass: "root"
+surreal_db_name: "production"

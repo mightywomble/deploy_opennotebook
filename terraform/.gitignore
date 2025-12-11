@@ -1,0 +1,27 @@
+# Ignore local Terraform artifacts and secret vars
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+
+# Local override and secret tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Terraform plan output file (local only)
+plan.out
+
+# Specifically ignore secret api key file
+cudo/secrets.auto.tfvars
+cudo/secrets.tfvars
+
+# Secrets for bootstrap.sh
+cudo/cf_api_token
+.env
+.env.*
+
+# Local secrets files (avoid committing sensitive values)
+secrets.auto.tfvars
+secrets.tfvars

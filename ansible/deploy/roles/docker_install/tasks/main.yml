@@ -1,0 +1,75 @@
+# roles/docker_install/tasks/main.yml
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+  # This updates the package list to ensure we download the latest versions.
+
+- name: Install prerequisite system packages
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - python3-pip
+      - python3-requests # Required for Ansible Docker modules
+    state: present
+  become: yes
+
+- name: Create directory for Docker GPG key
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Add Docker's official GPG key
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+    force: false # Idempotency: only download if missing
+  become: yes
+
+- name: Add Docker repository to Apt sources
+  shell: |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    tee /etc/apt/sources.list.d/docker.list > /dev/null
+  args:
+    creates: /etc/apt/sources.list.d/docker.list # Idempotency: don't run if file exists
+  become: yes
+
+- name: Update apt cache after adding docker repo
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: Install Docker Engine and Docker Compose Plugin
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  become: yes
+
+- name: Ensure Docker service is running and enabled
+  service:
+    name: docker
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Install Docker SDK for Python (required for community.docker modules)
+  pip:
+    name: docker
+    state: present
+    break_system_packages: true # Needed for newer Ubuntus (23.04+)
+  become: yes
+  ignore_errors: yes # Fallback for older python environments

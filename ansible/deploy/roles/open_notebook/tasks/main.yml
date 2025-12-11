@@ -1,0 +1,56 @@
+# roles/open_notebook/tasks/main.yml
+---
+- name: Create installation directory
+  file:
+    path: "{{ install_dir }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: yes
+  # This creates /opt/open-notebook
+
+- name: Template the Docker Compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ install_dir }}/docker-compose.yml"
+    mode: '0644'
+  become: yes
+  notify: Restart Open Notebook
+  # If this file changes, Ansible will trigger a restart
+
+- name: Template the Environment Variables file
+  template:
+    src: docker.env.j2
+    dest: "{{ install_dir }}/docker.env"
+    mode: '0600' # Secure permissions as it contains API keys
+  become: yes
+  notify: Restart Open Notebook
+
+- name: Deploy Open Notebook stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ install_dir }}"
+    state: present
+    pull: always
+  become: yes
+  register: compose_output
+  # This runs 'docker compose up -d'
+
+- name: Display deployment status
+  debug:
+    var: compose_output
+
+- name: Wait for service to be healthy (Basic Check)
+  uri:
+    url: "http://localhost:{{ frontend_port }}"
+    status_code: 200
+    return_content: no
+  register: health_check
+  until: health_check.status == 200
+  retries: 12
+  delay: 10
+  # Checks every 10 seconds for 2 minutes until the site is up
+
+- name: Print Access URL
+  debug:
+    msg: "Open Notebook is successfully installed! Access it at: http://{{ server_ip }}:{{ frontend_port }}"

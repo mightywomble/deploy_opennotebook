@@ -1,0 +1,16 @@
+services:
+  open_notebook:
+    # We use the single-container image which includes the App and the DB.
+    # This is the easiest way to get started.
+    image: lfnovo/open_notebook:v1-latest-single
+    ports:
+      - "{{ frontend_port }}:8502"
+      - "{{ backend_port }}:5055"
+    env_file:
+      - ./docker.env
+    pull_policy: always
+    volumes:
+      # Persist data on the host machine
+      - ./notebook_data:/app/data
+      - ./surreal_single_data:/mydata
+    restart: always

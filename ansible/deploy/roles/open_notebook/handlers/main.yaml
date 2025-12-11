@@ -1,0 +1,6 @@
+---
+- name: Restart Open Notebook
+  community.docker.docker_compose_v2:
+    project_src: "{{ install_dir }}"
+    state: restarted
+  become: yes
