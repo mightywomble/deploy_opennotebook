@@ -121,28 +121,30 @@ apt-get install -y -qq ansible python3-apt parted e2fsprogs ufw || log_error_exi
         enabled: true
 EOF
 
-    # --- Playbook: Section 1 - Disk Setup ---
-    cat > "${PB_DIR}/disk_setup.yml" <<EOF
+    # --- Playbook: Section 1 - Disk Setup (multi-disk) ---
+    cat > "${PB_DIR}/disk_setup.yml" <<'EOF'
 ---
-- name: Section 1 - Disk Setup
+- name: Section 1 - Disk Setup (multi-disk)
   hosts: localhost
   connection: local
   become: true
   gather_facts: false
   vars:
-    disk_path: "${DISK_PATH}"
-    part_path: "${PARTITION_PATH}"
-    mount_point: "${MOUNT_POINT}"
+    default_mount_mode: '0755'
   tasks:
-    - name: Ensure disk device exists
-      ansible.builtin.stat:
-        path: "{{ disk_path }}"
-      register: disk_stat
+    - name: Build disk list from environment
+      ansible.builtin.set_fact:
+        disks:
+          - disk_path: "{{ lookup('env','DISK_PATH') | default('', true) }}"
+            part_path: "{{ lookup('env','PARTITION_PATH') | default('', true) }}"
+            mount_point: "{{ lookup('env','MOUNT_POINT') | default('', true) }}"
+          - disk_path: "{{ lookup('env','DISK2_PATH') | default('', true) }}"
+            part_path: "{{ (lookup('env','PARTITION2_PATH') | default('')) | default((lookup('env','DISK2_PATH') | default('')) ~ '1', true) }}"
+            mount_point: "{{ lookup('env','MOUNT2_POINT') | default('/opt/data2', true) }}"
 
-    - name: Abort if disk not present
-      ansible.builtin.fail:
-        msg: "Target disk {{ disk_path }} not found."
-      when: not disk_stat.stat.exists
+    - name: Filter valid disks (non-empty disk_path)
+      ansible.builtin.set_fact:
+        disks: "{{ disks | selectattr('disk_path','string') | rejectattr('disk_path','equalto','') | list }}"
 
     - name: Ensure disk tools are installed
       ansible.builtin.apt:
@@ -152,38 +154,62 @@ EOF
         state: present
         update_cache: false
 
-    - name: Create GPT partition table (idempotent)
-      community.general.parted:
-        device: "{{ disk_path }}"
-        label: gpt
-        state: present
+    - name: Process each disk
+      ansible.builtin.include_tasks: disk_tasks.yml
+      loop: "{{ disks }}"
+      loop_control:
+        loop_var: d
+EOF
 
-    - name: Ensure primary partition exists (1 -> 100%)
-      community.general.parted:
-        device: "{{ disk_path }}"
-        number: 1
-        state: present
-        part_start: 1MiB
-        part_end: 100%
+    # Per-disk task file used by disk_setup.yml
+    cat > "${PB_DIR}/disk_tasks.yml" <<'EOF'
+---
+- name: Check that disk exists ({{ d.disk_path }})
+  ansible.builtin.stat:
+    path: "{{ d.disk_path }}"
+  register: dev_stat
 
-    - name: Create ext4 filesystem on partition
-      ansible.builtin.filesystem:
-        fstype: ext4
-        dev: "{{ part_path }}"
-      register: mkfs
+- name: Skip missing disk
+  ansible.builtin.debug:
+    msg: "Skipping {{ d.disk_path }} (device not present)"
+  when: not dev_stat.stat.exists
 
-    - name: Ensure mount point directory exists
-      ansible.builtin.file:
-        path: "{{ mount_point }}"
-        state: directory
-        mode: '0755'
+- name: Create GPT partition table (idempotent) on {{ d.disk_path }}
+  community.general.parted:
+    device: "{{ d.disk_path }}"
+    label: gpt
+    state: present
+  when: dev_stat.stat.exists
 
-    - name: Mount partition and persist in fstab
-      ansible.builtin.mount:
-        path: "{{ mount_point }}"
-        src: "{{ part_path }}"
-        fstype: ext4
-        state: mounted
+- name: Ensure primary partition exists (1 -> 100%) on {{ d.disk_path }}
+  community.general.parted:
+    device: "{{ d.disk_path }}"
+    number: 1
+    state: present
+    part_start: 1MiB
+    part_end: 100%
+  when: dev_stat.stat.exists
+
+- name: Create ext4 filesystem on {{ d.part_path }}
+  ansible.builtin.filesystem:
+    fstype: ext4
+    dev: "{{ d.part_path }}"
+  when: dev_stat.stat.exists
+
+- name: Ensure mount point directory exists ({{ d.mount_point }})
+  ansible.builtin.file:
+    path: "{{ d.mount_point }}"
+    state: directory
+    mode: '0755'
+  when: dev_stat.stat.exists
+
+- name: Mount partition and persist in fstab ({{ d.mount_point }})
+  ansible.builtin.mount:
+    path: "{{ d.mount_point }}"
+    src: "{{ d.part_path }}"
+    fstype: ext4
+    state: mounted
+  when: dev_stat.stat.exists
 EOF
 
     # 2) Run playbooks (Section 2, then Section 1 as requested)
@@ -191,21 +217,9 @@ EOF
     ansible-playbook "${PB_DIR}/system_update_firewall.yml" || log_error_exit "System update/firewall playbook failed."
     log_success "System update & firewall configured."
 
-    log_action "Running Ansible playbook: disk_setup.yml (primary data disk)"
+    log_action "Running Ansible playbook: disk_setup.yml (multi-disk)"
     ansible-playbook "${PB_DIR}/disk_setup.yml" || log_error_exit "Disk setup playbook failed."
-    log_success "Primary data disk prepared, formatted, mounted, and persisted."
-
-    # Optional second disk
-    if [[ -n "${DISK2_PATH:-}" && -b "${DISK2_PATH}" ]]; then
-      log_action "Running Ansible playbook: disk_setup.yml (second data disk)"
-      ansible-playbook "${PB_DIR}/disk_setup.yml" \
-        -e disk_path="${DISK2_PATH}" \
-        -e part_path="${PARTITION2_PATH:-${DISK2_PATH}1}" \
-        -e mount_point="${MOUNT2_POINT:-/opt/data2}" || log_error_exit "Second disk setup playbook failed."
-      log_success "Second data disk prepared, formatted, mounted, and persisted."
-    else
-      log_action "Second data disk not configured or device not present; skipping."
-    fi
+    log_success "Data disks prepared, formatted, mounted, and persisted."
 
     # 3) Pull and run repo playbook if configured
     if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
