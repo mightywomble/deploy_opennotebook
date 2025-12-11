@@ -195,6 +195,22 @@ EOF
     ansible-playbook "${PB_DIR}/disk_setup.yml" || log_error_exit "Disk setup playbook failed."
     log_success "Disk prepared, formatted, mounted, and persisted."
 
+    # 3) Pull and run repo playbook if configured
+    if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
+        local REPO_DIR="/root/ansible-src"
+        log_action "ansible-pull: ${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
+        ansible-pull \
+          -U "${ANSIBLE_REPO_URL}" \
+          -C "${ANSIBLE_REPO_REF:-main}" \
+          -d "${REPO_DIR}" \
+          "${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}" \
+          -i "localhost," \
+          --extra-vars "ansible_python_interpreter=/usr/bin/python3" || log_error_exit "ansible-pull failed."
+        log_success "ansible-pull completed."
+    else
+        log_action "ANSIBLE_REPO_URL not set; skipping ansible-pull."
+    fi
+
     log_action "--- Script Finished ---"
     log_success "All requested tasks completed via Ansible. Sections 3–5 have been intentionally omitted."
 }

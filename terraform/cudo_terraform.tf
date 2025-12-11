@@ -40,13 +40,17 @@ resource "cudo_vm" "instance" {
 
   # Run our bootstrap on first boot. We render a small wrapper that exports CF_API_TOKEN
   # and then executes the contents of bootstrap.sh under bash.
-  start_script = templatefile(
+start_script = templatefile(
     "${path.module}/templates/start_script.sh.tpl",
     {
-      cf_api_token       = var.cf_api_token
-      bootstrap_url      = var.bootstrap_url
-      cf_origin_cert_pem = var.cf_origin_cert_pem
-      cf_origin_key_pem  = var.cf_origin_key_pem
+      cf_api_token         = var.cf_api_token
+      bootstrap_url        = var.bootstrap_url
+      cf_origin_cert_pem   = var.cf_origin_cert_pem
+      cf_origin_key_pem    = var.cf_origin_key_pem
+      ansible_repo_url     = var.ansible_repo_url
+      ansible_repo_ref     = var.ansible_repo_ref
+      ansible_playbook     = var.ansible_playbook
+      ansible_repo_ssh_key = var.ansible_repo_ssh_key
     }
   )
 }

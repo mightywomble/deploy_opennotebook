@@ -30,6 +30,22 @@ ${cf_origin_key_pem}
 KEY_PEM
 chmod 600 "$CERT_SECRET_DIR/cf_origin_private_key.pem"
 
+# Ansible repo configuration (for ansible-pull)
+export ANSIBLE_REPO_URL="${ansible_repo_url}"
+export ANSIBLE_REPO_REF="${ansible_repo_ref}"
+export ANSIBLE_PLAYBOOK="${ansible_playbook}"
+
+# Optional SSH key for private repo access
+if [ -n "${ansible_repo_ssh_key}" ]; then
+  install -d -m 700 /root/.ssh
+  umask 077
+  cat > /root/.ssh/id_ansible <<'ANSIBLE_SSH_KEY'
+${ansible_repo_ssh_key}
+ANSIBLE_SSH_KEY
+  chmod 600 /root/.ssh/id_ansible
+  export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_ansible -o StrictHostKeyChecking=no"
+fi
+
 # Download and execute bootstrap.sh from the provided URL
 BOOTSTRAP_TMP="/root/bootstrap.sh"
 /usr/bin/curl -fsSL "${bootstrap_url}" -o "$BOOTSTRAP_TMP"
