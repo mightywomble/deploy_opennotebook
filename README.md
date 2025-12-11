@@ -93,8 +93,9 @@ ansible_playbook     = "ansible/deploy/site.yml"             # primary VM
 ansible_playbook_web = "ansible/deploy/site_web.yml"         # web VM
 
 # Web app API endpoint on the primary server
-# Set after first apply if needed (http://<opennotebook_ip>:5055)
-api_base = "http://<opennotebook_ip>:5055"
+# If left empty, Terraform will auto-derive http://<primary_public_ip>:5055
+# after the primary VM is created
+api_base = ""
 
 # Provide a read-only Deploy Key if the repo is private
 # ansible_repo_ssh_key = <<EOF
@@ -256,7 +257,7 @@ During first boot, the VMs will:
 - Log to `/root/postinstall.log`
 - Install Ansible and run early hardening (UFW) + disk partitioning/mount (both VMs)
 - Primary VM: pull your Ansible repo and run `ansible/deploy/site.yml`
-- Web VM: pull your Ansible repo and run `ansible/deploy/site_web.yml` (deploys the Streamlit app)
+- Web VM: pull your Ansible repo and run `ansible/deploy/site_web.yml` (deploys the Streamlit app). API_BASE is auto-set to `http://<primary_public_ip>:5055` unless you override `api_base`.
 
 ---
 

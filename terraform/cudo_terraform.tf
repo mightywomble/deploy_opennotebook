@@ -27,7 +27,7 @@ resource "cudo_vm" "web_instance" {
   ssh_key_source = var.ssh_key_source
 
   # Render start script for web node: run the web playbook and pass API_BASE
-  start_script = templatefile(
+start_script = templatefile(
     "${path.module}/templates/start_script.sh.tpl",
     {
       cf_api_token         = var.cf_api_token
@@ -38,7 +38,7 @@ resource "cudo_vm" "web_instance" {
       ansible_repo_ref     = var.ansible_repo_ref
       ansible_playbook     = var.ansible_playbook_web
       ansible_repo_ssh_key = var.ansible_repo_ssh_key
-      api_base             = var.api_base
+      api_base             = local.api_base_effective
     }
   )
 }
@@ -46,6 +46,21 @@ resource "cudo_vm" "web_instance" {
 provider "cudo" {
   api_key    = var.api_key
   project_id = var.project_id
+}
+
+# Derive primary VM public IP and compute API base if not provided
+locals {
+  primary_ip = coalesce(
+    try(cudo_vm.instance.public_ip, null),
+    try(cudo_vm.instance.public_ipv4, null),
+    try(cudo_vm.instance.ipv4, null),
+    try(cudo_vm.instance.ipv4_address, null),
+    ""
+  )
+
+  api_base_effective = var.api_base != "" ? var.api_base : (
+    local.primary_ip != "" ? "http://${local.primary_ip}:5055" : ""
+  )
 }
 
 # 1TB storage disk to attach to the VM
