@@ -1,0 +1,106 @@
+# Global security-focused ignore rules for this repo
+# These rules aim to prevent committing secrets, keys, tokens, and local credentials.
+# If you need to version any of these intentionally, place them in a safe sample file
+# (e.g., example.env) and keep the real secret out of Git.
+
+# --- Generic secret/credential files ---
+.env
+.env.*
+*.env
+*.env.*
+*.secrets
+*.secrets.*
+*.secret
+*.secret.*
+secrets.*
+
+# Common credentials and token filenames (structured data only)
+*token*.json
+*token*.yaml
+*token*.yml
+*token*.ini
+*token*.conf
+*token*.txt
+*secret*.json
+*secret*.yaml
+*secret*.yml
+*secret*.ini
+*secret*.conf
+*secret*.txt
+*password*.json
+*password*.yaml
+*password*.yml
+*password*.ini
+*password*.conf
+*password*.txt
+*credentials*.json
+*credentials*.yaml
+*credentials*.yml
+*credentials*.ini
+*credentials*.conf
+*credentials*.txt
+*apikey*.json
+*apikey*.yaml
+*apikey*.yml
+*apikey*.ini
+*apikey*.conf
+*apikey*.txt
+*api_key*.json
+*api_key*.yaml
+*api_key*.yml
+*api_key*.ini
+*api_key*.conf
+*api_key*.txt
+*auth*.json
+*auth*.yaml
+*auth*.yml
+*auth*.ini
+*auth*.conf
+*auth*.txt
+
+# --- SSH keys (allow public keys) ---
+**/id_rsa
+**/id_dsa
+**/id_ecdsa
+**/id_ed25519
+**/id_*
+!**/*.pub
+
+# --- TLS certificates and private keys ---
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.csr
+
+# --- Ansible secrets ---
+.vault_pass
+.vault_pass.*
+.vault_password*
+*vault*.yml
+*vault*.yaml
+*.vault
+ansible-vault.key
+# Common locations for vault files
+ansible/**/group_vars/**/vault.yml
+ansible/**/host_vars/**/vault.yml
+
+# --- Terraform secrets ---
+# (module-level .gitignore exists under terraform/, but keep global safety here too)
+*.auto.tfvars
+*.auto.tfvars.json
+secrets.auto.tfvars
+secrets.tfvars
+**/cf_api_token
+
+# --- Bootstrap/Runtime secret drop locations (defense-in-depth) ---
+/etc/bootstrap-secrets/
+**/.env.cloudflare
+
+# --- OS/Editor cruft (not secrets, just noise) ---
+.DS_Store
+.idea/
+.vscode/
