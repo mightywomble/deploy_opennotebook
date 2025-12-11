@@ -11,10 +11,10 @@ set -Eeuo pipefail
 readonly LOG_FILE="/root/postinstall.log"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# -- Disk and Mount Configuration --
-readonly DISK_PATH="/dev/sdb"
-readonly PARTITION_PATH="/dev/sdb1"
-readonly MOUNT_POINT="/opt/apt"
+# -- Disk and Mount Configuration (overridable via environment) --
+readonly DISK_PATH="${DISK_PATH:-/dev/sdb}"
+readonly PARTITION_PATH="${PARTITION_PATH:-/dev/sdb1}"
+readonly MOUNT_POINT="${MOUNT_POINT:-/opt/apt}"
 
 # --- Pre-run Checks & Logging Setup ---
 if (( EUID != 0 )); then
@@ -204,6 +204,12 @@ EOF
         if [[ -n "${API_BASE:-}" ]]; then
           EVARS="$EVARS api_base=${API_BASE}"
         fi
+        # ainotebook settings (for web VM; harmless on primary)
+        if [[ -n "${AINOTEBOOK_REPO_URL:-}" ]]; then EVARS="$EVARS ainotebook_repo_url=${AINOTEBOOK_REPO_URL}"; fi
+        if [[ -n "${AINOTEBOOK_REPO_REF:-}" ]]; then EVARS="$EVARS ainotebook_repo_ref=${AINOTEBOOK_REPO_REF}"; fi
+        if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS="$EVARS ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
+        if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS="$EVARS ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
+        if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS="$EVARS ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
         ansible-pull \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \

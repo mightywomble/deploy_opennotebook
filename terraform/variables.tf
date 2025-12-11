@@ -19,6 +19,19 @@ variable "image_id" {
   type        = string
 }
 
+# Machine type for the VMs
+variable "machine_type" {
+  description = "Cudo machine type for the primary VM"
+  type        = string
+  default     = "intel-broadwell"
+}
+
+variable "machine_type_web" {
+  description = "Cudo machine type for the web VM (defaults to machine_type)"
+  type        = string
+  default     = ""
+}
+
 variable "vcpus" {
   description = "Number of vCPUs for the VM"
   type        = number
@@ -32,6 +45,19 @@ variable "memory_gib" {
 variable "boot_disk_size" {
   description = "Boot disk size in GiB"
   # Intentionally leaving type unspecified to accept number or string (matches current tfvars)
+}
+
+# Data/storage disk sizes
+variable "storage_disk_size" {
+  description = "Data disk size in GiB for the primary VM"
+  type        = number
+  default     = 20
+}
+
+variable "storage_disk_size_web" {
+  description = "Data disk size in GiB for the web VM (defaults to storage_disk_size)"
+  type        = number
+  default     = 0
 }
 
 variable "ssh_key_source" {
@@ -96,6 +122,25 @@ variable "cf_origin_key_pem" {
   sensitive   = true
 }
 
+# Data disk/partition/mount used by bootstrap playbooks
+variable "data_disk_device" {
+  description = "Block device for data disk on each VM"
+  type        = string
+  default     = "/dev/sdb"
+}
+
+variable "data_partition_device" {
+  description = "Partition device path for data disk"
+  type        = string
+  default     = "/dev/sdb1"
+}
+
+variable "data_mount_point" {
+  description = "Mount point for data partition"
+  type        = string
+  default     = "/opt/apt"
+}
+
 # --- Ansible pull configuration ---
 variable "ansible_repo_url" {
   description = "Git URL for the Ansible repository (e.g., git@github.com:OWNER/REPO.git)"
@@ -133,4 +178,35 @@ variable "api_base" {
   description = "API base URL used by the web app (e.g., http://<opennotebook_ip>:5055)"
   type        = string
   default     = ""
+}
+
+# ainotebook (web app) settings
+variable "ainotebook_repo_url" {
+  description = "Git URL for the ainotebook Streamlit app"
+  type        = string
+  default     = "git@github.com:mightywomble/ainotebook.git"
+}
+
+variable "ainotebook_repo_ref" {
+  description = "Git ref/branch for ainotebook"
+  type        = string
+  default     = "main"
+}
+
+variable "ainotebook_app_dir" {
+  description = "Install directory for ainotebook on the web VM"
+  type        = string
+  default     = "/opt/ainotebook"
+}
+
+variable "ainotebook_streamlit_port" {
+  description = "TCP port for Streamlit"
+  type        = number
+  default     = 8501
+}
+
+variable "ainotebook_service_name" {
+  description = "systemd service name for the ainotebook app"
+  type        = string
+  default     = "ainotebook.service"
 }

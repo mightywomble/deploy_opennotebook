@@ -56,22 +56,33 @@ project_id     = "<cudo_project_id>"
 data_center_id = "<region_id>"          # e.g., gb-bournemouth-1
 image_id       = "<image_id>"            # e.g., ubuntu-24-04
 
+# Machine type
+machine_type   = "intel-broadwell"        # override as desired
+
 # Primary VM sizing (opennotebook)
 vcpus          = 4
 memory_gib     = 8
 boot_disk_size = 50                       # GiB
+storage_disk_size = 20                    # data disk GiB
 ssh_key_source = "user"                   # user | project | custom
 vm_id          = "opennotebook"          # human-readable id
 
 # Web VM (opennotebookweb)
 vm_id_web          = "opennotebookweb"
 # Optional overrides; if omitted, inherits from primary
-# vcpus_web       = 4
-# memory_gib_web  = 8
-# boot_disk_size_web = 50
+# machine_type_web     = "intel-broadwell"
+# vcpus_web            = 4
+# memory_gib_web       = 8
+# boot_disk_size_web   = 50
+# storage_disk_size_web = 20
 
 # First-boot
 bootstrap_url = "https://raw.githubusercontent.com/<owner>/<repo>/main/terraform/bootstrap.sh"
+
+# Disk layout used by bootstrap (stage 1 & 2)
+data_disk_device      = "/dev/sdb"
+data_partition_device = "/dev/sdb1"
+data_mount_point      = "/opt/apt"
 
 # Optional: if your bootstrap or Ansible needs it (example for Cloudflare)
 cf_api_token = "<token>"
@@ -96,6 +107,13 @@ ansible_playbook_web = "ansible/deploy/site_web.yml"         # web VM
 # If left empty, Terraform will auto-derive http://<primary_public_ip>:5055
 # after the primary VM is created
 api_base = ""
+
+# ainotebook app settings (web VM)
+ainotebook_repo_url       = "git@github.com:mightywomble/ainotebook.git"
+ainotebook_repo_ref       = "main"
+ainotebook_app_dir        = "/opt/ainotebook"
+ainotebook_streamlit_port = 8501
+ainotebook_service_name   = "ainotebook.service"
 
 # Provide a read-only Deploy Key if the repo is private
 # ansible_repo_ssh_key = <<EOF

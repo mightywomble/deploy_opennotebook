@@ -35,8 +35,18 @@ export ANSIBLE_REPO_URL="${ansible_repo_url}"
 export ANSIBLE_REPO_REF="${ansible_repo_ref}"
 export ANSIBLE_PLAYBOOK="${ansible_playbook}"
 
-# Optional app API base for web VM
+# Disk/mount for bootstrap local playbooks
+export DISK_PATH="${data_disk_device}"
+export PARTITION_PATH="${data_partition_device}"
+export MOUNT_POINT="${data_mount_point}"
+
+# Web app variables (used by ainotebook role)
 export API_BASE="${api_base}"
+export AINOTEBOOK_REPO_URL="${ainotebook_repo_url}"
+export AINOTEBOOK_REPO_REF="${ainotebook_repo_ref}"
+export AINOTEBOOK_APP_DIR="${ainotebook_app_dir}"
+export AINOTEBOOK_STREAMLIT_PORT="${ainotebook_streamlit_port}"
+export AINOTEBOOK_SERVICE_NAME="${ainotebook_service_name}"
 
 # Optional SSH key for private repo access
 if [ -n "${ansible_repo_ssh_key}" ]; then

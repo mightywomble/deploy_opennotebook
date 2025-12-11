@@ -6,17 +6,37 @@ vm_id          = "opennotebook"
 project_id     = "<your_cudo_project_id>"
 data_center_id = "gb-bournemouth-1"
 image_id       = "ubuntu-2404"
+
+# Machine type
+machine_type   = "intel-broadwell"
+
+# Primary sizing
 vcpus          = 4
 memory_gib     = 8
 boot_disk_size = 50
+storage_disk_size = 20
 ssh_key_source = "user"
+
+# Disk layout used by bootstrap
+data_disk_device      = "/dev/sdb"
+data_partition_device = "/dev/sdb1"
+data_mount_point      = "/opt/apt"
 
 # Web VM (opennotebookweb)
 vm_id_web = "opennotebookweb"
 # Optional overrides for sizing; if omitted, inherit from primary
-# vcpus_web        = 4
-# memory_gib_web   = 8
-# boot_disk_size_web = 50
+# machine_type_web       = "intel-broadwell"
+# vcpus_web              = 4
+# memory_gib_web         = 8
+# boot_disk_size_web     = 50
+# storage_disk_size_web  = 20
+
+# ainotebook settings for the web VM
+ainotebook_repo_url       = "git@github.com:mightywomble/ainotebook.git"
+ainotebook_repo_ref       = "main"
+ainotebook_app_dir        = "/opt/ainotebook"
+ainotebook_streamlit_port = 8501
+ainotebook_service_name   = "ainotebook.service"
 
 # Optional: override auto-derived API base for the web app
 # api_base = "http://1.2.3.4:5055"

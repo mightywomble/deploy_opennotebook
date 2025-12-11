@@ -11,7 +11,7 @@ terraform {
 resource "cudo_vm" "web_instance" {
   depends_on     = [cudo_storage_disk.web_storage]
   id             = replace(var.vm_id_web, "_", "-")
-  machine_type   = "intel-broadwell"
+  machine_type   = (var.machine_type_web != "" ? var.machine_type_web : (var.machine_type != "" ? var.machine_type : "intel-broadwell"))
   data_center_id = var.data_center_id
   memory_gib     = var.memory_gib_web != 0 ? var.memory_gib_web : var.memory_gib
   vcpus          = var.vcpus_web != 0 ? var.vcpus_web : var.vcpus
@@ -38,6 +38,16 @@ start_script = templatefile(
       ansible_repo_ref     = var.ansible_repo_ref
       ansible_playbook     = var.ansible_playbook_web
       ansible_repo_ssh_key = var.ansible_repo_ssh_key
+      # Disk/mount variables for bootstrap
+      data_disk_device     = var.data_disk_device
+      data_partition_device= var.data_partition_device
+      data_mount_point     = var.data_mount_point
+      # Web app variables
+      ainotebook_repo_url  = var.ainotebook_repo_url
+      ainotebook_repo_ref  = var.ainotebook_repo_ref
+      ainotebook_app_dir   = var.ainotebook_app_dir
+      ainotebook_streamlit_port = var.ainotebook_streamlit_port
+      ainotebook_service_name   = var.ainotebook_service_name
       api_base             = local.api_base_effective
     }
   )
@@ -67,21 +77,21 @@ locals {
 resource "cudo_storage_disk" "ubuntu_mirror_storage" {
   data_center_id = var.data_center_id
   id             = "${replace(var.vm_id, "_", "-")}-aptstorage"
-  size_gib       = 20
+  size_gib       = var.storage_disk_size
 }
 
 # Second disk for the web VM
 resource "cudo_storage_disk" "web_storage" {
   data_center_id = var.data_center_id
   id             = "${replace(var.vm_id_web, "_", "-")}-webstorage"
-  size_gib       = 20
+  size_gib       = (var.storage_disk_size_web != 0 ? var.storage_disk_size_web : var.storage_disk_size)
 }
 
 # Single VM for the Ubuntu mirror (primary)
 resource "cudo_vm" "instance" {
   depends_on     = [cudo_storage_disk.ubuntu_mirror_storage]
   id             = replace(var.vm_id, "_", "-")
-  machine_type   = "intel-broadwell"
+  machine_type   = (var.machine_type != "" ? var.machine_type : "intel-broadwell")
   data_center_id = var.data_center_id
   memory_gib     = var.memory_gib
   vcpus          = var.vcpus
@@ -109,6 +119,17 @@ start_script = templatefile(
       ansible_repo_ref     = var.ansible_repo_ref
       ansible_playbook     = var.ansible_playbook
       ansible_repo_ssh_key = var.ansible_repo_ssh_key
+      # Disk/mount variables for bootstrap
+      data_disk_device     = var.data_disk_device
+      data_partition_device= var.data_partition_device
+      data_mount_point     = var.data_mount_point
+      # Web app defaults (harmless on primary)
+      ainotebook_repo_url  = var.ainotebook_repo_url
+      ainotebook_repo_ref  = var.ainotebook_repo_ref
+      ainotebook_app_dir   = var.ainotebook_app_dir
+      ainotebook_streamlit_port = var.ainotebook_streamlit_port
+      ainotebook_service_name   = var.ainotebook_service_name
+      api_base             = local.api_base_effective
     }
   )
 }
