@@ -45,6 +45,30 @@ variable "vm_id" {
   type        = string
 }
 
+# Web VM identifier (second server)
+variable "vm_id_web" {
+  description = "Identifier for the web VM (used as cudo_vm.web_instance id)"
+  type        = string
+  default     = "opennotebookweb"
+}
+
+# Optional overrides for web VM sizing; fall back to primary if unset
+variable "vcpus_web" {
+  description = "Number of vCPUs for the web VM (defaults to vcpus)"
+  type        = number
+  default     = 0
+}
+
+variable "memory_gib_web" {
+  description = "RAM in GiB for the web VM (defaults to memory_gib)"
+  type        = number
+  default     = 0
+}
+
+variable "boot_disk_size_web" {
+  description = "Boot disk size in GiB for the web VM (defaults to boot_disk_size)"
+}
+
 
 # Cloudflare API token passed securely from Terraform into the VM's start_script
 variable "cf_api_token" {
@@ -94,5 +118,19 @@ variable "ansible_repo_ssh_key" {
   description = "Private SSH key used to access the Ansible repo (optional if repo is public)"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+# Web app playbook path (invoked on the second server)
+variable "ansible_playbook_web" {
+  description = "Playbook path to run on the web VM"
+  type        = string
+  default     = "ansible/deploy/site_web.yml"
+}
+
+# API base URL passed to the web VM; typically http://<opennotebook_ip>:5055
+variable "api_base" {
+  description = "API base URL used by the web app (e.g., http://<opennotebook_ip>:5055)"
+  type        = string
   default     = ""
 }

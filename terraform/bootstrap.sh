@@ -199,13 +199,18 @@ EOF
     if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
         local REPO_DIR="/root/ansible-src"
         log_action "ansible-pull: ${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
+        # Build extra-vars string
+        local EVARS="ansible_python_interpreter=/usr/bin/python3"
+        if [[ -n "${API_BASE:-}" ]]; then
+          EVARS="$EVARS api_base=${API_BASE}"
+        fi
         ansible-pull \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
           "${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}" \
           -i "localhost," \
-          --extra-vars "ansible_python_interpreter=/usr/bin/python3" || log_error_exit "ansible-pull failed."
+          --extra-vars "$EVARS" || log_error_exit "ansible-pull failed."
         log_success "ansible-pull completed."
     else
         log_action "ANSIBLE_REPO_URL not set; skipping ansible-pull."

@@ -36,7 +36,8 @@ A reproducible, idempotent infrastructure-as-code project for provisioning a VM 
 
 Terraform creates:
 - A storage disk (for data)
-- A VM instance booted from a specified image
+- A VM instance booted from a specified image (primary: opennotebook)
+- A second VM instance for the web app (opennotebookweb), with its own data disk
 - A first-boot "start script" rendered from `templates/start_script.sh.tpl` and injected via the provider
 
 That start script:
@@ -54,11 +55,20 @@ api_key        = "<cudo_api_key>"
 project_id     = "<cudo_project_id>"
 data_center_id = "<region_id>"          # e.g., gb-bournemouth-1
 image_id       = "<image_id>"            # e.g., ubuntu-24-04
+
+# Primary VM sizing (opennotebook)
 vcpus          = 4
 memory_gib     = 8
 boot_disk_size = 50                       # GiB
 ssh_key_source = "user"                   # user | project | custom
-vm_id          = "opennotebook-vm01"     # human-readable id
+vm_id          = "opennotebook"          # human-readable id
+
+# Web VM (opennotebookweb)
+vm_id_web          = "opennotebookweb"
+# Optional overrides; if omitted, inherits from primary
+# vcpus_web       = 4
+# memory_gib_web  = 8
+# boot_disk_size_web = 50
 
 # First-boot
 bootstrap_url = "https://raw.githubusercontent.com/<owner>/<repo>/main/terraform/bootstrap.sh"
@@ -76,10 +86,16 @@ cf_origin_key_pem = <<EOF
 -----END PRIVATE KEY-----
 EOF
 
-# Ansible-pull repo
+# Ansible-pull repo (this repo)
 ansible_repo_url     = "git@github.com:<owner>/<repo>.git"   # SSH form for private repo
 ansible_repo_ref     = "main"
-ansible_playbook     = "ansible/deploy/site.yml"
+ansible_playbook     = "ansible/deploy/site.yml"             # primary VM
+ansible_playbook_web = "ansible/deploy/site_web.yml"         # web VM
+
+# Web app API endpoint on the primary server
+# Set after first apply if needed (http://<opennotebook_ip>:5055)
+api_base = "http://<opennotebook_ip>:5055"
+
 # Provide a read-only Deploy Key if the repo is private
 # ansible_repo_ssh_key = <<EOF
 # -----BEGIN OPENSSH PRIVATE KEY-----
@@ -126,26 +142,33 @@ Logs:
 ```
 ansible/
 ├── deploy/
-│   └── site.yml              # Entry playbook for ansible-pull
+│   ├── site.yml              # Primary VM entry playbook (currently placeholder)
+│   └── site_web.yml          # Web VM entry playbook (invokes ainotebook role)
 ├── roles/
-│   ├── common/
-│   │   ├── tasks/main.yml
-│   │   ├── templates/
-│   │   └── files/
-│   └── app/
+│   └── ainotebook/
+│       ├── defaults/main.yml
 │       ├── tasks/main.yml
-│       └── ...
+│       └── templates/ainotebook.service.j2
 ├── group_vars/
-│   └── all.yml               # Defaults for all hosts
+│   └── all.yml               # Optional defaults for all hosts
 └── host_vars/
     └── <hostname>.yml
 ```
 
-### Idempotence
+### Web VM (opennotebookweb): what gets deployed
 
-- Modules like `apt`, `ufw`, `mount`, `filesystem`, and `community.general.parted` are declarative.
-- Tasks only change when state drifts (e.g., re-partitioning only if missing, mount entries persisted via `mount` module).
-- UFW tasks gate on output and use `--force enable` to avoid prompts.
+The `ainotebook` role:
+- Installs git, Python (pip/venv), and UFW
+- Clones `git@github.com:mightywomble/ainotebook.git` to `/opt/ainotebook`
+- Creates a Python venv and installs `requirements.txt` if present
+- Templates a systemd unit that runs: `streamlit run app.py --server.port 8501 --server.address 0.0.0.0`
+- Exposes `API_BASE` to the app via the unit Environment= line, coming from Terraform variable `api_base`
+- Enables and starts the service; opens UFW port 8501
+
+### Idempotence
+- Modules like `apt`, `git`, `pip`, `mount`, `filesystem`, `community.general.parted`, and `systemd` are declarative.
+- Re-running ansible-pull will only change what drifted (e.g., new commits in the app repo or updated requirements).
+- UFW commands are guarded to avoid duplicate rules.
 
 ### Variables You Might Set
 
@@ -229,10 +252,11 @@ Terraform will:
 - Create the storage disk and VM
 - Inject the start script that fetches and runs `bootstrap.sh`
 
-During first boot, the VM will:
+During first boot, the VMs will:
 - Log to `/root/postinstall.log`
-- Install Ansible and run early hardening (UFW) + disk partitioning/mount
-- Pull your Ansible repo and run `ansible/deploy/site.yml`
+- Install Ansible and run early hardening (UFW) + disk partitioning/mount (both VMs)
+- Primary VM: pull your Ansible repo and run `ansible/deploy/site.yml`
+- Web VM: pull your Ansible repo and run `ansible/deploy/site_web.yml` (deploys the Streamlit app)
 
 ---
 

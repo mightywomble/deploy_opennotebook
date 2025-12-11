@@ -1,0 +1,81 @@
+---
+- name: Ensure base packages are present
+  ansible.builtin.apt:
+    name:
+      - git
+      - python3
+      - python3-venv
+      - python3-pip
+      - ufw
+    state: present
+    update_cache: true
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ ainotebook_app_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Check for deploy key
+  ansible.builtin.stat:
+    path: /root/.ssh/id_ansible
+  register: deploy_key
+
+- name: Clone ainotebook repository (SSH with deploy key)
+  ansible.builtin.git:
+    repo: "{{ ainotebook_repo_url }}"
+    dest: "{{ ainotebook_app_dir }}"
+    version: "{{ ainotebook_repo_ref }}"
+    update: true
+    accept_hostkey: true
+    key_file: "/root/.ssh/id_ansible"
+  when: deploy_key.stat.exists
+
+- name: Clone ainotebook repository (no deploy key)
+  ansible.builtin.git:
+    repo: "{{ ainotebook_repo_url }}"
+    dest: "{{ ainotebook_app_dir }}"
+    version: "{{ ainotebook_repo_ref }}"
+    update: true
+    accept_hostkey: true
+  when: not deploy_key.stat.exists
+
+- name: Create Python virtual environment
+  ansible.builtin.command: python3 -m venv {{ ainotebook_app_dir }}/venv
+  args:
+    creates: "{{ ainotebook_app_dir }}/venv/bin/activate"
+
+- name: Check if requirements.txt exists
+  ansible.builtin.stat:
+    path: "{{ ainotebook_app_dir }}/requirements.txt"
+  register: req_stat
+
+- name: Install Python requirements if present
+  ansible.builtin.pip:
+    requirements: "{{ ainotebook_app_dir }}/requirements.txt"
+    virtualenv: "{{ ainotebook_app_dir }}/venv"
+  when: req_stat.stat.exists
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: ainotebook.service.j2
+    dest: "/etc/systemd/system/{{ ainotebook_service_name }}"
+    mode: '0644'
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start service
+  ansible.builtin.systemd:
+    name: "{{ ainotebook_service_name }}"
+    enabled: true
+    state: started
+
+- name: Open UFW port for Streamlit
+  ansible.builtin.command: ufw allow {{ ainotebook_streamlit_port }}/tcp
+  args:
+    warn: false
+  register: ufw_allow
+  changed_when: "'Skipping' not in ufw_allow.stdout"
+  failed_when: ufw_allow.rc != 0 and ('Skipping' not in ufw_allow.stdout)

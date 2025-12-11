@@ -1,0 +1,8 @@
+---
+- name: Web node - deploy Streamlit app (ainotebook)
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  roles:
+    - role: ainotebook

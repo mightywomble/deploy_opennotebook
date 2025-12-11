@@ -1,0 +1,8 @@
+---
+ainotebook_repo_url: "git@github.com:mightywomble/ainotebook.git"
+ainotebook_repo_ref: "main"
+ainotebook_app_dir: "/opt/ainotebook"
+ainotebook_service_name: "ainotebook.service"
+ainotebook_streamlit_port: 8501
+# API base should be passed in via --extra-vars api_base=... (from Terraform)
+api_base: ""

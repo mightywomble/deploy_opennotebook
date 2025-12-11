@@ -35,6 +35,9 @@ export ANSIBLE_REPO_URL="${ansible_repo_url}"
 export ANSIBLE_REPO_REF="${ansible_repo_ref}"
 export ANSIBLE_PLAYBOOK="${ansible_playbook}"
 
+# Optional app API base for web VM
+export API_BASE="${api_base}"
+
 # Optional SSH key for private repo access
 if [ -n "${ansible_repo_ssh_key}" ]; then
   install -d -m 700 /root/.ssh

@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Notebook Streamlit App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ ainotebook_app_dir }}
+# Environment for the app
+Environment=API_BASE={{ api_base | quote }}
+ExecStart={{ ainotebook_app_dir }}/venv/bin/streamlit run app.py --server.port {{ ainotebook_streamlit_port }} --server.address 0.0.0.0
+Restart=on-failure
+RestartSec=5s
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
