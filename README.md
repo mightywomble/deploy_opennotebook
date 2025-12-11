@@ -63,7 +63,8 @@ machine_type   = "intel-broadwell"        # override as desired
 vcpus          = 4
 memory_gib     = 8
 boot_disk_size = 50                       # GiB
-storage_disk_size = 20                    # data disk GiB
+storage_disk_size  = 20                    # data disk GiB
+storage_disk2_size = 0                     # second data disk GiB (0 disables)
 ssh_key_source = "user"                   # user | project | custom
 vm_id          = "opennotebook"          # human-readable id
 
@@ -74,7 +75,8 @@ vm_id_web          = "opennotebookweb"
 # vcpus_web            = 4
 # memory_gib_web       = 8
 # boot_disk_size_web   = 50
-# storage_disk_size_web = 20
+# storage_disk_size_web  = 20
+# storage_disk2_size_web = 0
 
 # First-boot
 bootstrap_url = "https://raw.githubusercontent.com/<owner>/<repo>/main/terraform/bootstrap.sh"
@@ -83,6 +85,10 @@ bootstrap_url = "https://raw.githubusercontent.com/<owner>/<repo>/main/terraform
 data_disk_device      = "/dev/sdb"
 data_partition_device = "/dev/sdb1"
 data_mount_point      = "/opt/apt"
+# Second disk mount (optional)
+data_disk2_device      = "/dev/sdc"
+data_partition2_device = "/dev/sdc1"
+data_mount2_point      = "/opt/data2"
 
 # Optional: if your bootstrap or Ansible needs it (example for Cloudflare)
 cf_api_token = "<token>"

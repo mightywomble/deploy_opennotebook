@@ -60,6 +60,19 @@ variable "storage_disk_size_web" {
   default     = 0
 }
 
+# Optional second data disks
+variable "storage_disk2_size" {
+  description = "Second data disk size in GiB for the primary VM (0 to disable)"
+  type        = number
+  default     = 0
+}
+
+variable "storage_disk2_size_web" {
+  description = "Second data disk size in GiB for the web VM (0 to disable)"
+  type        = number
+  default     = 0
+}
+
 variable "ssh_key_source" {
   description = "Where to pull SSH keys from: user, project, or custom"
   type        = string
@@ -93,6 +106,7 @@ variable "memory_gib_web" {
 
 variable "boot_disk_size_web" {
   description = "Boot disk size in GiB for the web VM (defaults to boot_disk_size)"
+  default     = null
 }
 
 
@@ -139,6 +153,25 @@ variable "data_mount_point" {
   description = "Mount point for data partition"
   type        = string
   default     = "/opt/apt"
+}
+
+# Second disk mount parameters (optional)
+variable "data_disk2_device" {
+  description = "Block device for second data disk"
+  type        = string
+  default     = "/dev/sdc"
+}
+
+variable "data_partition2_device" {
+  description = "Partition device path for second data disk"
+  type        = string
+  default     = "/dev/sdc1"
+}
+
+variable "data_mount2_point" {
+  description = "Mount point for second data partition"
+  type        = string
+  default     = "/opt/data2"
 }
 
 # --- Ansible pull configuration ---

@@ -40,6 +40,11 @@ export DISK_PATH="${data_disk_device}"
 export PARTITION_PATH="${data_partition_device}"
 export MOUNT_POINT="${data_mount_point}"
 
+# Optional second disk/mount for bootstrap
+export DISK2_PATH="${data_disk2_device}"
+export PARTITION2_PATH="${data_partition2_device}"
+export MOUNT2_POINT="${data_mount2_point}"
+
 # Web app variables (used by ainotebook role)
 export API_BASE="${api_base}"
 export AINOTEBOOK_REPO_URL="${ainotebook_repo_url}"

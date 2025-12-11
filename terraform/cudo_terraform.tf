@@ -19,11 +19,18 @@ resource "cudo_vm" "web_instance" {
     image_id = var.image_id
     size_gib = coalesce(var.boot_disk_size_web, var.boot_disk_size)
   }
-  storage_disks = [
-    {
-      disk_id = cudo_storage_disk.web_storage.id
-    }
-  ]
+storage_disks = concat(
+    [
+      {
+        disk_id = cudo_storage_disk.web_storage.id
+      }
+    ],
+    var.storage_disk2_size_web > 0 ? [
+      {
+        disk_id = cudo_storage_disk.web_storage2[0].id
+      }
+    ] : []
+  )
   ssh_key_source = var.ssh_key_source
 
   # Render start script for web node: run the web playbook and pass API_BASE
@@ -87,6 +94,21 @@ resource "cudo_storage_disk" "web_storage" {
   size_gib       = (var.storage_disk_size_web != 0 ? var.storage_disk_size_web : var.storage_disk_size)
 }
 
+# Optional second disks
+resource "cudo_storage_disk" "ubuntu_mirror_storage2" {
+  count          = var.storage_disk2_size > 0 ? 1 : 0
+  data_center_id = var.data_center_id
+  id             = "${replace(var.vm_id, "_", "-")}-datastorage-2"
+  size_gib       = var.storage_disk2_size
+}
+
+resource "cudo_storage_disk" "web_storage2" {
+  count          = var.storage_disk2_size_web > 0 ? 1 : 0
+  data_center_id = var.data_center_id
+  id             = "${replace(var.vm_id_web, "_", "-")}-webstorage-2"
+  size_gib       = var.storage_disk2_size_web
+}
+
 # Single VM for the Ubuntu mirror (primary)
 resource "cudo_vm" "instance" {
   depends_on     = [cudo_storage_disk.ubuntu_mirror_storage]
@@ -99,11 +121,18 @@ resource "cudo_vm" "instance" {
     image_id = var.image_id
     size_gib = var.boot_disk_size
   }
-  storage_disks = [
-    {
-      disk_id = cudo_storage_disk.ubuntu_mirror_storage.id
-    }
-  ]
+storage_disks = concat(
+    [
+      {
+        disk_id = cudo_storage_disk.ubuntu_mirror_storage.id
+      }
+    ],
+    var.storage_disk2_size > 0 ? [
+      {
+        disk_id = cudo_storage_disk.ubuntu_mirror_storage2[0].id
+      }
+    ] : []
+  )
   ssh_key_source = var.ssh_key_source
 
   # Run our bootstrap on first boot. We render a small wrapper that exports CF_API_TOKEN

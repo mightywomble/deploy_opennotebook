@@ -14,13 +14,18 @@ machine_type   = "intel-broadwell"
 vcpus          = 4
 memory_gib     = 8
 boot_disk_size = 50
-storage_disk_size = 20
+storage_disk_size  = 20
+storage_disk2_size = 0
 ssh_key_source = "user"
 
 # Disk layout used by bootstrap
 data_disk_device      = "/dev/sdb"
 data_partition_device = "/dev/sdb1"
 data_mount_point      = "/opt/apt"
+# Optional second disk mount
+data_disk2_device      = "/dev/sdc"
+data_partition2_device = "/dev/sdc1"
+data_mount2_point      = "/opt/data2"
 
 # Web VM (opennotebookweb)
 vm_id_web = "opennotebookweb"
@@ -30,6 +35,7 @@ vm_id_web = "opennotebookweb"
 # memory_gib_web         = 8
 # boot_disk_size_web     = 50
 # storage_disk_size_web  = 20
+# storage_disk2_size_web = 0
 
 # ainotebook settings for the web VM
 ainotebook_repo_url       = "git@github.com:mightywomble/ainotebook.git"

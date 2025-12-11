@@ -191,9 +191,21 @@ EOF
     ansible-playbook "${PB_DIR}/system_update_firewall.yml" || log_error_exit "System update/firewall playbook failed."
     log_success "System update & firewall configured."
 
-    log_action "Running Ansible playbook: disk_setup.yml"
+    log_action "Running Ansible playbook: disk_setup.yml (primary data disk)"
     ansible-playbook "${PB_DIR}/disk_setup.yml" || log_error_exit "Disk setup playbook failed."
-    log_success "Disk prepared, formatted, mounted, and persisted."
+    log_success "Primary data disk prepared, formatted, mounted, and persisted."
+
+    # Optional second disk
+    if [[ -n "${DISK2_PATH:-}" && -b "${DISK2_PATH}" ]]; then
+      log_action "Running Ansible playbook: disk_setup.yml (second data disk)"
+      ansible-playbook "${PB_DIR}/disk_setup.yml" \
+        -e disk_path="${DISK2_PATH}" \
+        -e part_path="${PARTITION2_PATH:-${DISK2_PATH}1}" \
+        -e mount_point="${MOUNT2_POINT:-/opt/data2}" || log_error_exit "Second disk setup playbook failed."
+      log_success "Second data disk prepared, formatted, mounted, and persisted."
+    else
+      log_action "Second data disk not configured or device not present; skipping."
+    fi
 
     # 3) Pull and run repo playbook if configured
     if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
