@@ -1,0 +1,22 @@
+# Example non-sensitive Terraform variables.
+# Put secrets (API keys, tokens, SSH private keys) in terraform/secrets.auto.tfvars instead.
+
+# Primary VM (opennotebook)
+vm_id          = "opennotebook"
+project_id     = "<your_cudo_project_id>"
+data_center_id = "gb-bournemouth-1"
+image_id       = "ubuntu-2404"
+vcpus          = 4
+memory_gib     = 8
+boot_disk_size = 50
+ssh_key_source = "user"
+
+# Web VM (opennotebookweb)
+vm_id_web = "opennotebookweb"
+# Optional overrides for sizing; if omitted, inherit from primary
+# vcpus_web        = 4
+# memory_gib_web   = 8
+# boot_disk_size_web = 50
+
+# Optional: override auto-derived API base for the web app
+# api_base = "http://1.2.3.4:5055"
