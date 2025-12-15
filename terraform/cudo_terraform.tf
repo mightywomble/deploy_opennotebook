@@ -9,7 +9,7 @@ terraform {
 
 # Second VM: opennotebookweb
 resource "cudo_vm" "web_instance" {
-  depends_on     = [cudo_storage_disk.web_storage, cudo_vm.instance]
+  depends_on     = [cudo_vm.instance]
   id             = replace(var.vm_id_web, "_", "-")
   machine_type   = (var.machine_type_web != "" ? var.machine_type_web : (var.machine_type != "" ? var.machine_type : "intel-broadwell"))
   data_center_id = var.data_center_id
@@ -19,11 +19,6 @@ resource "cudo_vm" "web_instance" {
     image_id = var.image_id
     size_gib = coalesce(var.boot_disk_size_web, var.boot_disk_size)
   }
-storage_disks = [
-    {
-      disk_id = cudo_storage_disk.web_storage.id
-    }
-  ]
   ssh_key_source = var.ssh_key_source
 
   # Render start script for web node: run the web playbook and pass API_BASE
@@ -59,24 +54,10 @@ provider "cudo" {
 }
 
 
-# 1TB storage disk to attach to the VM
-resource "cudo_storage_disk" "ubuntu_mirror_storage" {
-  data_center_id = var.data_center_id
-  id             = "${replace(var.vm_id, "_", "-")}-aptstorage"
-  size_gib       = var.storage_disk_size
-}
-
-# Second disk for the web VM
-resource "cudo_storage_disk" "web_storage" {
-  data_center_id = var.data_center_id
-  id             = "${replace(var.vm_id_web, "_", "-")}-webstorage"
-  size_gib       = (var.storage_disk_size_web != 0 ? var.storage_disk_size_web : var.storage_disk_size)
-}
 
 
 # Single VM for the Ubuntu mirror (primary)
 resource "cudo_vm" "instance" {
-  depends_on     = [cudo_storage_disk.ubuntu_mirror_storage]
   id             = replace(var.vm_id, "_", "-")
   machine_type   = (var.machine_type != "" ? var.machine_type : "intel-broadwell")
   data_center_id = var.data_center_id
@@ -86,11 +67,6 @@ resource "cudo_vm" "instance" {
     image_id = var.image_id
     size_gib = var.boot_disk_size
   }
-storage_disks = [
-    {
-      disk_id = cudo_storage_disk.ubuntu_mirror_storage.id
-    }
-  ]
   ssh_key_source = var.ssh_key_source
 
   # Run our bootstrap on first boot. We render a small wrapper that exports CF_API_TOKEN
