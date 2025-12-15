@@ -79,7 +79,11 @@ apt-get install -y -qq ansible python3-apt parted e2fsprogs ufw || log_error_exi
 
     # Ensure required Ansible collections are present (for community.general.parted)
     log_action "Installing required Ansible collections (community.general)..."
-    ansible-galaxy collection install community.general --force -q || log_error_exit "Failed to install Ansible collection community.general."
+    # Some Ansible builds do not support -q; install with --force and log output
+    if ! ansible-galaxy collection install community.general --force; then
+        # Retry without --force for very old versions
+        ansible-galaxy collection install community.general || log_error_exit "Failed to install Ansible collection community.general."
+    fi
 
     # 1) Emit playbooks on the target so they can run locally
     local PB_DIR="/root/bootstrap_playbooks"
