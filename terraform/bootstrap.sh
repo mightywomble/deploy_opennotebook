@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # --- Non-Interactive Idempotent Server Setup Script (Ansible-driven) ---
-# This script now installs Ansible and delegates core steps to playbooks.
-# Kept: logging, Section 1 (Disk Setup) and Section 2 (System Update & Firewall).
-# Removed: Section 3 (apt-mirror), Section 4 (NGINX/Cloudflare), Section 5 (Mirror sync).
+# This script installs Ansible and runs minimal, idempotent configuration.
+# Kept: logging and Section 2 (Firewall).
+# Removed: Disk setup, apt-mirror, NGINX/Cloudflare, and mirror sync.
 
 set -Eeuo pipefail
 
@@ -30,10 +30,6 @@ printf '%s\n' 'LANG=C.UTF-8' 'LC_ALL=C.UTF-8' 'LANGUAGE=C.UTF-8' >> /etc/environ
 readonly LOG_FILE="/root/postinstall.log"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# -- Disk and Mount Configuration (overridable via environment) --
-readonly DISK_PATH="${DISK_PATH:-/dev/sdb}"
-readonly PARTITION_PATH="${PARTITION_PATH:-/dev/sdb1}"
-readonly MOUNT_POINT="${MOUNT_POINT:-/opt/apt}"
 
 # --- Pre-run Checks & Logging Setup ---
 if (( EUID != 0 )); then
@@ -66,15 +62,12 @@ main() {
     log_action "--- Effective configuration at start ---"
     echo "LOG_FILE: $LOG_FILE"
     echo "SCRIPT_DIR: $SCRIPT_DIR"
-    echo "DISK_PATH: $DISK_PATH"
-    echo "PARTITION_PATH: $PARTITION_PATH"
-    echo "MOUNT_POINT: $MOUNT_POINT"
     echo "DEBIAN_FRONTEND: $DEBIAN_FRONTEND"
 
     # 0) Install Ansible and prerequisites
     log_action "Installing Ansible and required packages (python3-apt, parted, e2fsprogs, ufw)..."
     apt-get update -qq
-apt-get install -y -qq ansible python3-apt parted e2fsprogs ufw || log_error_exit "Failed to install prerequisites."
+apt-get install -y -qq ansible python3-apt ufw || log_error_exit "Failed to install prerequisites."
     log_success "Ansible and prerequisites installed."
 
     # Ensure required Ansible collections are present (for community.general.parted)
@@ -135,102 +128,12 @@ apt-get install -y -qq ansible python3-apt parted e2fsprogs ufw || log_error_exi
         enabled: true
 EOF
 
-    # --- Playbook: Section 1 - Disk Setup (multi-disk) ---
-    cat > "${PB_DIR}/disk_setup.yml" <<'EOF'
----
-- name: Section 1 - Disk Setup (multi-disk)
-  hosts: localhost
-  connection: local
-  become: true
-  gather_facts: false
-  vars:
-    default_mount_mode: '0755'
-  tasks:
-    - name: Build disk list from environment
-      ansible.builtin.set_fact:
-        disks:
-          - disk_path: "{{ lookup('env','DISK_PATH') | default('', true) }}"
-            part_path: "{{ lookup('env','PARTITION_PATH') | default('', true) }}"
-            mount_point: "{{ lookup('env','MOUNT_POINT') | default('', true) }}"
-
-    - name: Filter valid disks (non-empty disk_path)
-      ansible.builtin.set_fact:
-        disks: "{{ disks | selectattr('disk_path','string') | rejectattr('disk_path','equalto','') | list }}"
-
-    - name: Ensure disk tools are installed
-      ansible.builtin.apt:
-        name:
-          - parted
-          - e2fsprogs
-        state: present
-        update_cache: false
-
-    - name: Process each disk
-      ansible.builtin.include_tasks: disk_tasks.yml
-      loop: "{{ disks }}"
-      loop_control:
-        loop_var: d
-EOF
-
-    # Per-disk task file used by disk_setup.yml
-    cat > "${PB_DIR}/disk_tasks.yml" <<'EOF'
----
-- name: Check that disk exists ({{ d.disk_path }})
-  ansible.builtin.stat:
-    path: "{{ d.disk_path }}"
-  register: dev_stat
-
-- name: Skip missing disk
-  ansible.builtin.debug:
-    msg: "Skipping {{ d.disk_path }} (device not present)"
-  when: not dev_stat.stat.exists
-
-- name: Create GPT partition table (idempotent) on {{ d.disk_path }}
-  community.general.parted:
-    device: "{{ d.disk_path }}"
-    label: gpt
-    state: present
-  when: dev_stat.stat.exists
-
-- name: Ensure primary partition exists (1 -> 100%) on {{ d.disk_path }}
-  community.general.parted:
-    device: "{{ d.disk_path }}"
-    number: 1
-    state: present
-    part_start: 1MiB
-    part_end: 100%
-  when: dev_stat.stat.exists
-
-- name: Create ext4 filesystem on {{ d.part_path }}
-  ansible.builtin.filesystem:
-    fstype: ext4
-    dev: "{{ d.part_path }}"
-  when: dev_stat.stat.exists
-
-- name: Ensure mount point directory exists ({{ d.mount_point }})
-  ansible.builtin.file:
-    path: "{{ d.mount_point }}"
-    state: directory
-    mode: '0755'
-  when: dev_stat.stat.exists
-
-- name: Mount partition and persist in fstab ({{ d.mount_point }})
-  ansible.builtin.mount:
-    path: "{{ d.mount_point }}"
-    src: "{{ d.part_path }}"
-    fstype: ext4
-    state: mounted
-  when: dev_stat.stat.exists
-EOF
 
     # 2) Run playbooks (Section 2, then Section 1 as requested)
     log_action "Running Ansible playbook: system_update_firewall.yml"
     ansible-playbook -i 'localhost,' "${PB_DIR}/system_update_firewall.yml" || log_error_exit "System update/firewall playbook failed."
     log_success "System update & firewall configured."
 
-    log_action "Running Ansible playbook: disk_setup.yml (multi-disk)"
-    ansible-playbook -i 'localhost,' "${PB_DIR}/disk_setup.yml" || log_error_exit "Disk setup playbook failed."
-    log_success "Data disks prepared, formatted, mounted, and persisted."
 
     # 3) Pull and run repo playbook if configured
     if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
