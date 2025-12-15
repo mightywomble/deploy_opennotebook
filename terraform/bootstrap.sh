@@ -152,9 +152,6 @@ EOF
           - disk_path: "{{ lookup('env','DISK_PATH') | default('', true) }}"
             part_path: "{{ lookup('env','PARTITION_PATH') | default('', true) }}"
             mount_point: "{{ lookup('env','MOUNT_POINT') | default('', true) }}"
-          - disk_path: "{{ lookup('env','DISK2_PATH') | default('', true) }}"
-            part_path: "{{ (lookup('env','PARTITION2_PATH') | default('')) | default((lookup('env','DISK2_PATH') | default('')) ~ '1', true) }}"
-            mount_point: "{{ lookup('env','MOUNT2_POINT') | default('/opt/data2', true) }}"
 
     - name: Filter valid disks (non-empty disk_path)
       ansible.builtin.set_fact:

@@ -19,18 +19,11 @@ resource "cudo_vm" "web_instance" {
     image_id = var.image_id
     size_gib = coalesce(var.boot_disk_size_web, var.boot_disk_size)
   }
-storage_disks = concat(
-    [
-      {
-        disk_id = cudo_storage_disk.web_storage.id
-      }
-    ],
-    var.storage_disk2_size_web > 0 ? [
-      {
-        disk_id = cudo_storage_disk.web_storage2[0].id
-      }
-    ] : []
-  )
+storage_disks = [
+    {
+      disk_id = cudo_storage_disk.web_storage.id
+    }
+  ]
   ssh_key_source = var.ssh_key_source
 
   # Render start script for web node: run the web playbook and pass API_BASE
@@ -49,10 +42,6 @@ start_script = templatefile(
       data_disk_device     = var.data_disk_device
       data_partition_device= var.data_partition_device
       data_mount_point     = var.data_mount_point
-      # Optional second disk variables
-      data_disk2_device        = var.data_disk2_device
-      data_partition2_device   = var.data_partition2_device
-      data_mount2_point        = var.data_mount2_point
       # Web app variables
       ainotebook_repo_url  = var.ainotebook_repo_url
       ainotebook_repo_ref  = var.ainotebook_repo_ref
@@ -84,20 +73,6 @@ resource "cudo_storage_disk" "web_storage" {
   size_gib       = (var.storage_disk_size_web != 0 ? var.storage_disk_size_web : var.storage_disk_size)
 }
 
-# Optional second disks
-resource "cudo_storage_disk" "ubuntu_mirror_storage2" {
-  count          = var.storage_disk2_size > 0 ? 1 : 0
-  data_center_id = var.data_center_id
-  id             = "${replace(var.vm_id, "_", "-")}-datastorage-2"
-  size_gib       = var.storage_disk2_size
-}
-
-resource "cudo_storage_disk" "web_storage2" {
-  count          = var.storage_disk2_size_web > 0 ? 1 : 0
-  data_center_id = var.data_center_id
-  id             = "${replace(var.vm_id_web, "_", "-")}-webstorage-2"
-  size_gib       = var.storage_disk2_size_web
-}
 
 # Single VM for the Ubuntu mirror (primary)
 resource "cudo_vm" "instance" {
@@ -111,18 +86,11 @@ resource "cudo_vm" "instance" {
     image_id = var.image_id
     size_gib = var.boot_disk_size
   }
-storage_disks = concat(
-    [
-      {
-        disk_id = cudo_storage_disk.ubuntu_mirror_storage.id
-      }
-    ],
-    var.storage_disk2_size > 0 ? [
-      {
-        disk_id = cudo_storage_disk.ubuntu_mirror_storage2[0].id
-      }
-    ] : []
-  )
+storage_disks = [
+    {
+      disk_id = cudo_storage_disk.ubuntu_mirror_storage.id
+    }
+  ]
   ssh_key_source = var.ssh_key_source
 
   # Run our bootstrap on first boot. We render a small wrapper that exports CF_API_TOKEN
@@ -142,10 +110,6 @@ start_script = templatefile(
       data_disk_device     = var.data_disk_device
       data_partition_device= var.data_partition_device
       data_mount_point     = var.data_mount_point
-      # Optional second disk variables
-      data_disk2_device        = var.data_disk2_device
-      data_partition2_device   = var.data_partition2_device
-      data_mount2_point        = var.data_mount2_point
       # Web app defaults (harmless on primary)
       ainotebook_repo_url  = var.ainotebook_repo_url
       ainotebook_repo_ref  = var.ainotebook_repo_ref

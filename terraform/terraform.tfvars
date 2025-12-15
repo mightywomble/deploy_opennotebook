@@ -1,11 +1,11 @@
 # Primary VM (opennotebook)
 vm_id          = "opennotebookserver"
 project_id     = "service-test"
-boot_disk_size = "50"
+boot_disk_size = "250"
 vcpus          = 2
 memory_gib     = 4
 data_center_id = "gb-bournemouth-1"
-ssh_key_source = "user"
+ssh_key_source = "project"
 image_id       = "ubuntu-2404"
 
 # Web VM (opennotebookweb)
