@@ -7,6 +7,25 @@
 
 set -Eeuo pipefail
 
+# Ensure UTF-8 locale for this session and persist system-wide (idempotent)
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+export LANGUAGE="${LANGUAGE:-C.UTF-8}"
+if command -v update-locale >/dev/null 2>&1; then
+  update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 LANGUAGE=C.UTF-8 || true
+fi
+mkdir -p /etc/profile.d || true
+cat > /etc/profile.d/locale.sh <<'EOF'
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export LANGUAGE=C.UTF-8
+EOF
+chmod 0644 /etc/profile.d/locale.sh || true
+if [ -f /etc/environment ]; then
+  sed -i '/^LANG=/d;/^LC_ALL=/d;/^LANGUAGE=/d' /etc/environment || true
+fi
+printf '%s\n' 'LANG=C.UTF-8' 'LC_ALL=C.UTF-8' 'LANGUAGE=C.UTF-8' >> /etc/environment || true
+
 # --- Configuration ---
 readonly LOG_FILE="/root/postinstall.log"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

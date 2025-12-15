@@ -1,5 +1,5 @@
 # Primary VM (opennotebook)
-vm_id          = "david_test_vm"
+vm_id          = "opennotebookserver"
 project_id     = "service-test"
 boot_disk_size = "50"
 vcpus          = 2

@@ -4,6 +4,27 @@
 
 set -euo pipefail
 
+# Ensure UTF-8 locale so Python/Ansible do not error out on "Detected None" encoding
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export LANGUAGE=C.UTF-8
+
+# Persist UTF-8 locale system-wide (idempotent)
+if command -v update-locale >/dev/null 2>&1; then
+  update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8 LANGUAGE=C.UTF-8 || true
+fi
+mkdir -p /etc/profile.d || true
+cat > /etc/profile.d/locale.sh <<'EOF'
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export LANGUAGE=C.UTF-8
+EOF
+chmod 0644 /etc/profile.d/locale.sh || true
+if [ -f /etc/environment ]; then
+  sed -i '/^LANG=/d;/^LC_ALL=/d;/^LANGUAGE=/d' /etc/environment || true
+fi
+printf '%s\n' 'LANG=C.UTF-8' 'LC_ALL=C.UTF-8' 'LANGUAGE=C.UTF-8' >> /etc/environment || true
+
 # Export token as an environment variable for bootstrap.sh to consume
 export CF_API_TOKEN="${cf_api_token}"
 

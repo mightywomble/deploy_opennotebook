@@ -9,7 +9,7 @@ terraform {
 
 # Second VM: opennotebookweb
 resource "cudo_vm" "web_instance" {
-  depends_on     = [cudo_storage_disk.web_storage]
+  depends_on     = [cudo_storage_disk.web_storage, cudo_vm.instance]
   id             = replace(var.vm_id_web, "_", "-")
   machine_type   = (var.machine_type_web != "" ? var.machine_type_web : (var.machine_type != "" ? var.machine_type : "intel-broadwell"))
   data_center_id = var.data_center_id
@@ -49,13 +49,17 @@ start_script = templatefile(
       data_disk_device     = var.data_disk_device
       data_partition_device= var.data_partition_device
       data_mount_point     = var.data_mount_point
+      # Optional second disk variables
+      data_disk2_device        = var.data_disk2_device
+      data_partition2_device   = var.data_partition2_device
+      data_mount2_point        = var.data_mount2_point
       # Web app variables
       ainotebook_repo_url  = var.ainotebook_repo_url
       ainotebook_repo_ref  = var.ainotebook_repo_ref
       ainotebook_app_dir   = var.ainotebook_app_dir
       ainotebook_streamlit_port = var.ainotebook_streamlit_port
       ainotebook_service_name   = var.ainotebook_service_name
-      api_base             = local.api_base_effective
+      api_base             = var.api_base
     }
   )
 }
@@ -65,20 +69,6 @@ provider "cudo" {
   project_id = var.project_id
 }
 
-# Derive primary VM public IP and compute API base if not provided
-locals {
-  primary_ip = coalesce(
-    try(cudo_vm.instance.public_ip, null),
-    try(cudo_vm.instance.public_ipv4, null),
-    try(cudo_vm.instance.ipv4, null),
-    try(cudo_vm.instance.ipv4_address, null),
-    ""
-  )
-
-  api_base_effective = var.api_base != "" ? var.api_base : (
-    local.primary_ip != "" ? "http://${local.primary_ip}:5055" : ""
-  )
-}
 
 # 1TB storage disk to attach to the VM
 resource "cudo_storage_disk" "ubuntu_mirror_storage" {
@@ -152,13 +142,18 @@ start_script = templatefile(
       data_disk_device     = var.data_disk_device
       data_partition_device= var.data_partition_device
       data_mount_point     = var.data_mount_point
+      # Optional second disk variables
+      data_disk2_device        = var.data_disk2_device
+      data_partition2_device   = var.data_partition2_device
+      data_mount2_point        = var.data_mount2_point
       # Web app defaults (harmless on primary)
       ainotebook_repo_url  = var.ainotebook_repo_url
       ainotebook_repo_ref  = var.ainotebook_repo_ref
       ainotebook_app_dir   = var.ainotebook_app_dir
       ainotebook_streamlit_port = var.ainotebook_streamlit_port
       ainotebook_service_name   = var.ainotebook_service_name
-      api_base             = local.api_base_effective
+      # Avoid cycle: do not derive api_base from this VM's own IP
+      api_base             = var.api_base
     }
   )
 }
