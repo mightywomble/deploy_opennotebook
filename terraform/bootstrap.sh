@@ -100,11 +100,6 @@ apt-get install -y -qq ansible python3-apt parted e2fsprogs ufw || log_error_exi
   vars:
     ssh_port: 22
   tasks:
-    - name: Update apt cache and upgrade packages (safe upgrade)
-      ansible.builtin.apt:
-        update_cache: true
-        upgrade: yes
-        cache_valid_time: 3600
 
     - name: Ensure UFW is installed
       ansible.builtin.apt:
@@ -112,32 +107,28 @@ apt-get install -y -qq ansible python3-apt parted e2fsprogs ufw || log_error_exi
         state: present
 
     - name: Allow SSH with rate limiting
-      ansible.builtin.command: ufw limit {{ ssh_port }}/tcp
-      args:
-        warn: false
-      register: ufw_limit
-      changed_when: "'Skipping' not in ufw_limit.stdout"
-      failed_when: ufw_limit.rc != 0 and ('Skipping' not in ufw_limit.stdout)
+      community.general.ufw:
+        rule: limit
+        port: "{{ ssh_port }}"
+        proto: tcp
 
     - name: Allow HTTP
-      ansible.builtin.command: ufw allow 80/tcp
-      args: { warn: false }
-      register: ufw_http
-      changed_when: "'Skipping' not in ufw_http.stdout"
-      failed_when: ufw_http.rc != 0 and ('Skipping' not in ufw_http.stdout)
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
 
     - name: Allow HTTPS
-      ansible.builtin.command: ufw allow 443/tcp
-      args: { warn: false }
-      register: ufw_https
-      changed_when: "'Skipping' not in ufw_https.stdout"
-      failed_when: ufw_https.rc != 0 and ('Skipping' not in ufw_https.stdout)
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
 
-    - name: Enable and start UFW
-      ansible.builtin.command: ufw --force enable
-      args: { warn: false }
+    - name: Ensure UFW enabled
+      community.general.ufw:
+        state: enabled
 
-    - name: Ensure UFW is enabled at boot and running
+    - name: Ensure UFW service is running and enabled
       ansible.builtin.systemd:
         name: ufw
         state: started
@@ -237,11 +228,11 @@ EOF
 
     # 2) Run playbooks (Section 2, then Section 1 as requested)
     log_action "Running Ansible playbook: system_update_firewall.yml"
-    ansible-playbook "${PB_DIR}/system_update_firewall.yml" || log_error_exit "System update/firewall playbook failed."
+    ansible-playbook -i 'localhost,' "${PB_DIR}/system_update_firewall.yml" || log_error_exit "System update/firewall playbook failed."
     log_success "System update & firewall configured."
 
     log_action "Running Ansible playbook: disk_setup.yml (multi-disk)"
-    ansible-playbook "${PB_DIR}/disk_setup.yml" || log_error_exit "Disk setup playbook failed."
+    ansible-playbook -i 'localhost,' "${PB_DIR}/disk_setup.yml" || log_error_exit "Disk setup playbook failed."
     log_success "Data disks prepared, formatted, mounted, and persisted."
 
     # 3) Pull and run repo playbook if configured
