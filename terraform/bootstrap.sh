@@ -318,13 +318,17 @@ EOF
             echo "ansible-playbook location: $(which ansible-playbook)"
             log_action "==================================="
             
+            log_action "Starting ansible-playbook execution (this may take several minutes)..."
+            
             set +e
+            # Use unbuffer or script to show live output while logging
+            # Force flush to show progress in real-time
             ansible-playbook -vv \
               -i "localhost," \
               -c local \
               "${PLAYBOOK_PATH}" \
-              --extra-vars "${EVARS}"
-            local exit_code=$?
+              --extra-vars "${EVARS}" 2>&1 | tee -a /root/ansible-playbook.log
+            local exit_code=${PIPESTATUS[0]}
             set -e
             
             if [ $exit_code -eq 0 ]; then
