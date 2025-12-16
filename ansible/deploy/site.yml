@@ -1,7 +1,8 @@
 # site.yml
 ---
 - name: Install Open Notebook on Fresh Server
-  hosts: open_notebook_server
+  hosts: localhost
+  connection: local
   become: yes # Run everything as sudo
   gather_facts: yes # Needed to detect server_ip
 

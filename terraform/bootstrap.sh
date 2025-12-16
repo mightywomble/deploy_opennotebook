@@ -138,20 +138,47 @@ EOF
     # 3) Pull and run repo playbook if configured
     if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
         local REPO_DIR="/root/ansible-src"
-        mkdir -p "${REPO_DIR}" 2>/dev/null || true
-        log_action "ansible-pull: ${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
-
-        # Determine playbook path early (needed for api_base derivation and inventory)
         local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}"
         local PLAYBOOK_BASE
         PLAYBOOK_BASE="$(basename "$PLAYBOOK_PATH")"
+        
+        log_action "ansible-pull: ${PLAYBOOK_PATH} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
+        log_action "Detected playbook: ${PLAYBOOK_BASE}"
 
-        # Build extra-vars string
+        # Ensure SSH is configured for non-interactive git operations
+        install -d -m 700 /root/.ssh || true
+        if [ ! -f /root/.ssh/known_hosts ] || ! grep -q github.com /root/.ssh/known_hosts; then
+            log_action "Adding GitHub host key..."
+            ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true
+        fi
+        
+        # Set GIT_SSH_COMMAND if not already set (from start_script.sh.tpl)
+        if [ -z "${GIT_SSH_COMMAND:-}" ]; then
+          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
+          log_action "Set GIT_SSH_COMMAND for non-interactive git"
+        fi
+
+        # Clean stale repo directory if it exists but isn't a valid git repo
+        if [ -d "${REPO_DIR}" ]; then
+            if [ ! -d "${REPO_DIR}/.git" ]; then
+                log_action "Removing stale non-git directory: ${REPO_DIR}"
+                rm -rf "${REPO_DIR}"
+            else
+                log_action "Found existing git repo at ${REPO_DIR}"
+            fi
+        fi
+
+        # Ensure roles path includes both ansible/roles and ansible/deploy/roles
+        export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles:/etc/ansible/roles:/usr/share/ansible/roles"
+        log_action "Set ANSIBLE_ROLES_PATH: ${ANSIBLE_ROLES_PATH}"
+
+        # Build extra-vars
         local EVARS="ansible_python_interpreter=/usr/bin/python3"
 
-        # If API_BASE is empty or a placeholder containing '<', derive for primary (site.yml) from local IP; otherwise leave empty for web
+        # Derive API_BASE intelligently based on playbook
         if [[ -z "${API_BASE:-}" || "${API_BASE}" == *"<"* || "${API_BASE}" == *">"* ]]; then
           if [[ "${PLAYBOOK_BASE}" == "site.yml" ]]; then
+            # Primary server: derive from local IP
             local LOCAL_IP
             LOCAL_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
             if [[ -z "${LOCAL_IP}" ]]; then
@@ -159,13 +186,16 @@ EOF
             fi
             if [[ -n "${LOCAL_IP}" ]]; then
               API_BASE="http://${LOCAL_IP}:5055"
-            else
-              API_BASE=""
+              log_action "Derived API_BASE for primary: ${API_BASE}"
             fi
           else
-            API_BASE=""
+            # Web server: API_BASE should be set by Terraform to point to primary
+            log_action "Web server detected; API_BASE should be set externally"
           fi
+        else
+          log_action "Using provided API_BASE: ${API_BASE}"
         fi
+        
         if [[ -n "${API_BASE:-}" ]]; then
           EVARS+=" api_base=${API_BASE}"
         fi
@@ -177,36 +207,30 @@ EOF
         if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS+=" ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
         if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS+=" ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
 
-        # Ensure roles path includes both ansible/roles and ansible/deploy/roles
-        export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles:/etc/ansible/roles:/usr/share/ansible/roles"
-
-        # Ensure non-interactive git over SSH (avoid host key prompts/hangs)
-        install -d -m 700 /root/.ssh || true
-        ssh-keyscan -H github.com 2>/dev/null >> /root/.ssh/known_hosts || true
-        if [ -z "${GIT_SSH_COMMAND:-}" ]; then
-          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes"
-        fi
-
-        # Choose inventory: if playbook is site.yml (hosts: open_notebook_server), map that host to localhost
-        local INV_ARG
-        if [[ "$PLAYBOOK_BASE" == "site.yml" ]]; then
-          cat > "${REPO_DIR}/local.inventory" <<'INV'
-[open_notebook_server]
+        # Simple inventory: both playbooks target localhost
+        log_action "Creating inventory for ${PLAYBOOK_BASE} (hosts: localhost)"
+        local INV_FILE="/root/ansible.inventory"
+        cat > "${INV_FILE}" <<'INV'
+[all]
 localhost ansible_connection=local ansible_host=127.0.0.1
 INV
-          INV_ARG=( -i "${REPO_DIR}/local.inventory" )
-        else
-          INV_ARG=( -i "localhost," )
-        fi
 
-        ansible-pull -vv \
+        log_action "Running ansible-pull with verbosity..."
+        log_action "Command: ansible-pull -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
+        
+        # Run ansible-pull with full error handling
+        if ansible-pull -vv \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
-          "$PLAYBOOK_PATH" \
-          "${INV_ARG[@]}" \
-          --extra-vars "$EVARS" || log_error_exit "ansible-pull failed."
-        log_success "ansible-pull completed."
+          "${PLAYBOOK_PATH}" \
+          -i "${INV_FILE}" \
+          --extra-vars "${EVARS}"; then
+            log_success "ansible-pull completed successfully."
+        else
+            local exit_code=$?
+            log_error_exit "ansible-pull failed with exit code ${exit_code}. Check logs above for details."
+        fi
     else
         log_action "ANSIBLE_REPO_URL not set; skipping ansible-pull."
     fi

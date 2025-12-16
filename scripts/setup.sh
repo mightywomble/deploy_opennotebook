@@ -82,21 +82,16 @@ DEF_vcpus="$(existing_val vcpus "$TFVARS_FILE")"; DEF_vcpus="${DEF_vcpus:-4}"
 DEF_memory_gib="$(existing_val memory_gib "$TFVARS_FILE")"; DEF_memory_gib="${DEF_memory_gib:-8}"
 DEF_boot_disk_size="$(existing_val boot_disk_size "$TFVARS_FILE")"; DEF_boot_disk_size="${DEF_boot_disk_size:-50}"
 DEF_storage_disk_size="$(existing_val storage_disk_size "$TFVARS_FILE")"; DEF_storage_disk_size="${DEF_storage_disk_size:-20}"
-DEF_storage_disk2_size="$(existing_val storage_disk2_size "$TFVARS_FILE")"; DEF_storage_disk2_size="${DEF_storage_disk2_size:-0}"
 DEF_vcpus_web="$(existing_val vcpus_web "$TFVARS_FILE")"
 DEF_memory_gib_web="$(existing_val memory_gib_web "$TFVARS_FILE")"
 DEF_boot_disk_size_web="$(existing_val boot_disk_size_web "$TFVARS_FILE")"
 DEF_storage_disk_size_web="$(existing_val storage_disk_size_web "$TFVARS_FILE")"
-DEF_storage_disk2_size_web="$(existing_val storage_disk2_size_web "$TFVARS_FILE")"
 DEF_ssh_key_source="$(existing_val ssh_key_source "$TFVARS_FILE")"; DEF_ssh_key_source="${DEF_ssh_key_source:-user}"
 
 # Disk layout defaults
 DEF_data_disk_device="$(existing_val data_disk_device "$TFVARS_FILE")"; DEF_data_disk_device="${DEF_data_disk_device:-/dev/sdb}"
 DEF_data_partition_device="$(existing_val data_partition_device "$TFVARS_FILE")"; DEF_data_partition_device="${DEF_data_partition_device:-/dev/sdb1}"
 DEF_data_mount_point="$(existing_val data_mount_point "$TFVARS_FILE")"; DEF_data_mount_point="${DEF_data_mount_point:-/opt/apt}"
-DEF_data_disk2_device="$(existing_val data_disk2_device "$TFVARS_FILE")"; DEF_data_disk2_device="${DEF_data_disk2_device:-/dev/sdc}"
-DEF_data_partition2_device="$(existing_val data_partition2_device "$TFVARS_FILE")"; DEF_data_partition2_device="${DEF_data_partition2_device:-/dev/sdc1}"
-DEF_data_mount2_point="$(existing_val data_mount2_point "$TFVARS_FILE")"; DEF_data_mount2_point="${DEF_data_mount2_point:-/opt/data2}"
 
 # Ansible-pull repo (this repo) and web app repo defaults
 DEF_ansible_repo_url="$(existing_val ansible_repo_url "$SECRETS_FILE")"; DEF_ansible_repo_url="${DEF_ansible_repo_url:-$GIT_REMOTE_URL}"
@@ -123,7 +118,6 @@ vcpus=$(prompt "vCPUs" "$DEF_vcpus")
 memory_gib=$(prompt "Memory GiB" "$DEF_memory_gib")
 boot_disk_size=$(prompt "Boot disk size (GiB)" "$DEF_boot_disk_size")
 storage_disk_size=$(prompt "Data disk size (GiB)" "$DEF_storage_disk_size")
-storage_disk2_size=$(prompt "Second data disk size (GiB, 0=disable)" "$DEF_storage_disk2_size")
 ssh_key_source=$(prompt "SSH key source (user|project|custom)" "$DEF_ssh_key_source")
 
 info "Web VM (opennotebookweb)"
@@ -133,15 +127,11 @@ vcpus_web=$(prompt "Web vCPUs (empty to inherit)" "${DEF_vcpus_web:-}")
 memory_gib_web=$(prompt "Web Memory GiB (empty to inherit)" "${DEF_memory_gib_web:-}")
 boot_disk_size_web=$(prompt "Web boot disk size GiB (empty to inherit)" "${DEF_boot_disk_size_web:-}")
 storage_disk_size_web=$(prompt "Web data disk size GiB (empty -> inherit primary)" "${DEF_storage_disk_size_web:-}")
-storage_disk2_size_web=$(prompt "Web second data disk size GiB (0=disable)" "${DEF_storage_disk2_size_web:-0}")
 
 info "Disk layout used by bootstrap (both VMs)"
 data_disk_device=$(prompt "Data disk device" "$DEF_data_disk_device")
 data_partition_device=$(prompt "Data partition device" "$DEF_data_partition_device")
 data_mount_point=$(prompt "Data mount point" "$DEF_data_mount_point")
-data_disk2_device=$(prompt "Second disk device" "$DEF_data_disk2_device")
-data_partition2_device=$(prompt "Second partition device" "$DEF_data_partition2_device")
-data_mount2_point=$(prompt "Second mount point" "$DEF_data_mount2_point")
 
 info "Ansible pull (this repo)"
 ansible_repo_url=$(prompt "Ansible repo URL (this repo)" "$DEF_ansible_repo_url")
@@ -184,9 +174,9 @@ cat <<CONF
 Project:       $project_id
 Region:        $data_center_id
 Image:         $image_id
-Primary VM:    id=$vm_id type=$machine_type vcpus=$vcpus memGiB=$memory_gib bootGiB=$boot_disk_size dataGiB=$storage_disk_size data2GiB=$storage_disk2_size
-Web VM:        id=$vm_id_web type=${machine_type_web:-inherit} vcpus=${vcpus_web:-inherit} memGiB=${memory_gib_web:-inherit} bootGiB=${boot_disk_size_web:-inherit} dataGiB=${storage_disk_size_web:-inherit:$storage_disk_size} data2GiB=$storage_disk2_size_web
-Disk layout:   $data_disk_device -> $data_partition_device -> $data_mount_point | $data_disk2_device -> $data_partition2_device -> $data_mount2_point
+Primary VM:    id=$vm_id type=$machine_type vcpus=$vcpus memGiB=$memory_gib bootGiB=$boot_disk_size dataGiB=$storage_disk_size
+Web VM:        id=$vm_id_web type=${machine_type_web:-inherit} vcpus=${vcpus_web:-inherit} memGiB=${memory_gib_web:-inherit} bootGiB=${boot_disk_size_web:-inherit} dataGiB=${storage_disk_size_web:-inherit:$storage_disk_size}
+Disk layout:   $data_disk_device -> $data_partition_device -> $data_mount_point
 Ansible repo:  $ansible_repo_url ref=$ansible_repo_ref play=$ansible_playbook web_play=$ansible_playbook_web
 App repo:      $ainotebook_repo_url ref=$ainotebook_repo_ref dir=$ainotebook_app_dir port=$ainotebook_streamlit_port svc=$ainotebook_service_name
 API_BASE:      ${api_base:-"(auto)"}
@@ -217,7 +207,6 @@ vcpus                 = $vcpus
 memory_gib            = $memory_gib
 boot_disk_size        = $boot_disk_size
 storage_disk_size     = $storage_disk_size
-storage_disk2_size    = $storage_disk2_size
 ssh_key_source        = "$ssh_key_source"
 
 # Web VM
@@ -227,16 +216,11 @@ vcpus_web             = ${vcpus_web:-0}
 memory_gib_web        = ${memory_gib_web:-0}
 boot_disk_size_web    = ${boot_disk_size_web:-null}
 storage_disk_size_web = ${storage_disk_size_web:-0}
-storage_disk2_size_web= ${storage_disk2_size_web:-0}
 
 # Disk layout
 data_disk_device       = "$data_disk_device"
 data_partition_device  = "$data_partition_device"
 data_mount_point       = "$data_mount_point"
-# Second disk
-data_disk2_device      = "$data_disk2_device"
-data_partition2_device = "$data_partition2_device"
-data_mount2_point      = "$data_mount2_point"
 
 # ainotebook app
 ainotebook_repo_url       = "$ainotebook_repo_url"
