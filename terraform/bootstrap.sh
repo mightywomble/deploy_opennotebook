@@ -219,10 +219,10 @@ localhost ansible_connection=local ansible_host=127.0.0.1
 INV
 
         log_action "Running ansible-pull with verbosity..."
-        log_action "Command: ansible-pull -vvv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
+        log_action "Command: ansible-pull -v -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
         
-        # Run ansible-pull with full error handling (use -vvv for detailed output)
-        if ansible-pull -vvv \
+        # Run ansible-pull with error handling (-v for progress without excessive detail)
+        if ansible-pull -v \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
