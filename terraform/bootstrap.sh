@@ -216,19 +216,11 @@ EOF
             docker ps --filter name=opennotebook --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             
         elif [[ "${PLAYBOOK_BASE}" == "site_web.yml" ]] && [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
-            # Web server: Use ansible-pull
-            local REPO_DIR="/root/ansible-src"
+            # Web server: Clone repo and run ansible-playbook
+            local REPO_DIR="/root/deploy_opennotebook"
             
-            log_action "Web server detected - using ansible-pull for deployment"
-            log_action "ansible-pull: ${ANSIBLE_PLAYBOOK} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
-        
-            log_action "=== Environment Variables Check ==="
-            echo "ANSIBLE_REPO_URL: ${ANSIBLE_REPO_URL}"
-            echo "ANSIBLE_REPO_REF: ${ANSIBLE_REPO_REF:-main}"
-            echo "ANSIBLE_PLAYBOOK: ${ANSIBLE_PLAYBOOK}"
-            echo "API_BASE: ${API_BASE:-unset}"
-            log_action "====================================="
-
+            log_action "Web server detected - deploying with git clone + ansible-playbook"
+            
             # Ensure SSH is configured
             install -d -m 700 /root/.ssh || true
             if [ ! -f /root/.ssh/known_hosts ] || ! grep -q github.com /root/.ssh/known_hosts; then
@@ -240,13 +232,23 @@ EOF
             export HOME="${HOME:-/root}"
             export USER="${USER:-root}"
             
-            # Clean stale repo
-            if [ -d "${REPO_DIR}" ] && [ ! -d "${REPO_DIR}/.git" ]; then
-                rm -rf "${REPO_DIR}"
+            # Clone or update repo
+            if [ -d "${REPO_DIR}/.git" ]; then
+                log_action "Updating existing repository..."
+                cd "${REPO_DIR}"
+                git fetch origin || log_error_exit "Failed to fetch from remote"
+                git checkout "${ANSIBLE_REPO_REF:-main}" || log_error_exit "Failed to checkout ${ANSIBLE_REPO_REF:-main}"
+                git pull origin "${ANSIBLE_REPO_REF:-main}" || log_error_exit "Failed to pull latest changes"
+            else
+                log_action "Cloning repository to ${REPO_DIR}..."
+                rm -rf "${REPO_DIR}" 2>/dev/null || true
+                git clone "${ANSIBLE_REPO_URL}" "${REPO_DIR}" || log_error_exit "Failed to clone repository"
+                cd "${REPO_DIR}"
+                git checkout "${ANSIBLE_REPO_REF:-main}" || log_error_exit "Failed to checkout ${ANSIBLE_REPO_REF:-main}"
             fi
-
-            export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles"
-
+            
+            log_success "Repository ready at ${REPO_DIR}"
+            
             # Build extra-vars for web server
             local EVARS="ansible_python_interpreter=/usr/bin/python3"
             if [[ -n "${API_BASE:-}" ]]; then EVARS+=" api_base=${API_BASE}"; fi
@@ -255,30 +257,26 @@ EOF
             if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS+=" ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
             if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS+=" ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
             if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS+=" ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
-
-            # Create inventory
-            local INV_FILE="/root/ansible.inventory"
-            cat > "${INV_FILE}" <<'INV'
-[all]
-localhost ansible_connection=local ansible_host=127.0.0.1
-INV
-
-            log_action "Executing ansible-pull..."
+            
+            log_action "Environment variables: ${EVARS}"
+            
+            # Run ansible-playbook
+            log_action "Running ansible-playbook..."
+            cd "${REPO_DIR}"
+            
             set +e
-            ansible-pull -vv \
-              -U "${ANSIBLE_REPO_URL}" \
-              -C "${ANSIBLE_REPO_REF:-main}" \
-              -d "${REPO_DIR}" \
+            ansible-playbook -vv \
+              -i "localhost," \
+              -c local \
               "${ANSIBLE_PLAYBOOK}" \
-              -i "${INV_FILE}" \
               --extra-vars "${EVARS}"
             local exit_code=$?
             set -e
             
             if [ $exit_code -eq 0 ]; then
-                log_success "ansible-pull completed successfully."
+                log_success "ansible-playbook completed successfully."
             else
-                log_error_exit "ansible-pull failed with exit code ${exit_code}."
+                log_error_exit "ansible-playbook failed with exit code ${exit_code}."
             fi
         else
             log_action "Unknown playbook: ${PLAYBOOK_BASE}"
