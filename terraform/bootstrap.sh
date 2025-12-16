@@ -138,6 +138,7 @@ EOF
     # 3) Pull and run repo playbook if configured
     if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
         local REPO_DIR="/root/ansible-src"
+        mkdir -p "${REPO_DIR}" 2>/dev/null || true
         log_action "ansible-pull: ${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
         # Build extra-vars string
         local EVARS="ansible_python_interpreter=/usr/bin/python3"
@@ -154,6 +155,13 @@ EOF
         # Ensure roles path includes both ansible/roles and ansible/deploy/roles
         export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles:/etc/ansible/roles:/usr/share/ansible/roles"
 
+        # Ensure non-interactive git over SSH (avoid host key prompts/hangs)
+        install -d -m 700 /root/.ssh || true
+        ssh-keyscan -H github.com 2>/dev/null >> /root/.ssh/known_hosts || true
+        if [ -z "${GIT_SSH_COMMAND:-}" ]; then
+          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes"
+        fi
+
         # Choose inventory: if playbook is site.yml (hosts: open_notebook_server), map that host to localhost
         local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}"
         local PLAYBOOK_BASE
@@ -166,7 +174,7 @@ EOF
           INV_ARG=( -i "localhost," )
         fi
 
-        ansible-pull \
+        ansible-pull -vv \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
