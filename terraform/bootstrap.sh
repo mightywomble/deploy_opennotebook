@@ -349,9 +349,13 @@ EOF
             log_action "Starting ansible-playbook execution (this may take several minutes)..."
             
             set +e
-            # Use unbuffer or script to show live output while logging
-            # Force flush to show progress in real-time
-            ansible-playbook -vv \
+            # Use maximum verbosity to debug what's happening
+            # Also set environment variables to avoid hanging
+            export DEBIAN_FRONTEND=noninteractive
+            export ANSIBLE_FORCE_COLOR=1
+            export ANSIBLE_STDOUT_CALLBACK=debug
+            
+            ansible-playbook -vvvv \
               -i "localhost," \
               -c local \
               "${PLAYBOOK_PATH}" \
