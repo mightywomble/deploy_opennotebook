@@ -214,10 +214,12 @@ localhost ansible_connection=local ansible_host=127.0.0.1
 INV
 
         log_action "Running ansible-pull with verbosity..."
-        log_action "Command: ansible-pull -v -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
+        log_action "Command: ansible-pull -vvv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
+        log_action "Environment check: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-unset} HOME=${HOME} USER=${USER}"
+        log_action "GIT_SSH_COMMAND: ${GIT_SSH_COMMAND}"
         
-        # Run ansible-pull with error handling (-v for progress without excessive detail)
-        if ansible-pull -v \
+        # Run ansible-pull with full verbosity to diagnose any hangs
+        if ansible-pull -vvv \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
