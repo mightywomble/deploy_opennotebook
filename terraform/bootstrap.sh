@@ -1,13 +1,66 @@
 #!/bin/bash
 
-# --- Non-Interactive Idempotent Server Setup Script (Ansible-driven) ---
-# This script installs Ansible and runs minimal, idempotent configuration.
-# Kept: logging and Section 2 (Firewall).
-# Removed: Disk setup, apt-mirror, NGINX/Cloudflare, and mirror sync.
+################################################################################
+# BOOTSTRAP.SH - OpenNotebook Multi-Server Deployment Script
+################################################################################
+#
+# PURPOSE:
+#   This script is executed by Terraform's cloud-init on both VMs to configure
+#   and deploy the OpenNotebook application stack.
+#
+# ARCHITECTURE:
+#   - Two VMs are created: opennotebookserver (primary) and opennotebookweb
+#   - Bootstrap.sh runs on BOTH servers but behaves differently based on
+#     the ANSIBLE_PLAYBOOK environment variable set by Terraform
+#
+# SERVER-SPECIFIC BEHAVIOR:
+#
+#   opennotebookserver (Primary):
+#     - ANSIBLE_PLAYBOOK=ansible/deploy/site.yml
+#     - Installs Docker directly (no Ansible complexity)
+#     - Deploys lfnovo/open_notebook:v1-latest-single container
+#     - Exposes ports 5055 (API) and 8502 (Web UI)
+#     - Includes embedded SurrealDB database
+#
+#   opennotebookweb (Web Server):
+#     - ANSIBLE_PLAYBOOK=ansible/deploy/site_web.yml
+#     - Clones deploy_opennotebook repo to /root/deploy_opennotebook
+#     - Runs ansible-playbook to deploy ainotebook Streamlit app
+#     - Connects to primary server via API_BASE environment variable
+#
+# COMMON STEPS (Both Servers):
+#   1. Configure UTF-8 locale
+#   2. Install Ansible and prerequisites
+#   3. Configure UFW firewall (SSH, HTTP, HTTPS)
+#   4. Disable unattended-upgrades to prevent apt lock conflicts
+#   5. Deploy server-specific application
+#
+# ENVIRONMENT VARIABLES (set by start_script.sh.tpl):
+#   - ANSIBLE_REPO_URL: Git repo URL for ansible playbooks
+#   - ANSIBLE_REPO_REF: Git branch/ref to use (default: main)
+#   - ANSIBLE_PLAYBOOK: Which playbook to run (determines server type)
+#   - API_BASE: URL of primary server API (for web server)
+#   - AINOTEBOOK_*: Configuration for ainotebook Streamlit app
+#
+# LOGGING:
+#   - All output is logged to /root/postinstall.log
+#   - Ansible playbook output also logged to /root/ansible-playbook.log
+#
+# IDEMPOTENCY:
+#   - Safe to run multiple times
+#   - Checks if Docker/containers already exist before recreating
+#   - Ansible playbooks are idempotent by design
+#
+################################################################################
 
 set -Eeuo pipefail
 
-# Ensure UTF-8 locale for this session and persist system-wide (idempotent)
+################################################################################
+# SECTION 0: UTF-8 Locale Configuration
+# Ensures Ansible and Python don't fail with "Detected None" encoding errors
+# This persists system-wide so future SSH sessions also have UTF-8
+################################################################################
+
 export LANG="${LANG:-C.UTF-8}"
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 export LANGUAGE="${LANGUAGE:-C.UTF-8}"
@@ -136,13 +189,24 @@ EOF
     log_success "System update & firewall configured."
 
 
-    # 3) Deploy application based on playbook type
+    ################################################################################
+    # SECTION 3: Application Deployment
+    # This section behaves differently based on ANSIBLE_PLAYBOOK value:
+    # - site.yml = Primary server (Docker + OpenNotebook)
+    # - site_web.yml = Web server (git clone + ansible-playbook)
+    ################################################################################
+    
     if [[ -n "${ANSIBLE_PLAYBOOK:-}" ]]; then
         local PLAYBOOK_BASE
         PLAYBOOK_BASE="$(basename "${ANSIBLE_PLAYBOOK}")"
         
+        ########################################################################
+        # PRIMARY SERVER DEPLOYMENT (opennotebookserver)
+        # Detects: ANSIBLE_PLAYBOOK=ansible/deploy/site.yml
+        # Action: Direct Docker installation + OpenNotebook container
+        ########################################################################
+        
         if [[ "${PLAYBOOK_BASE}" == "site.yml" ]]; then
-            # Primary server: Install Docker and OpenNotebook directly
             log_action "Primary server detected - deploying Docker and OpenNotebook"
             
             # Check if Docker is already installed

@@ -1,49 +1,59 @@
 # OpenNotebook: Terraform + Ansible Deployment
 
-A reproducible, idempotent infrastructure-as-code project for provisioning a VM on Cudo Compute with Terraform, then configuring it using Ansible pulled from Git at first boot.
+A reproducible, idempotent infrastructure-as-code project for provisioning two VMs on Cudo Compute with Terraform, then configuring them using a unified bootstrap.sh script that behaves differently based on environment variables.
 
 ## Executive Summary
 
-- Terraform provisions the VM and a data disk on Cudo Compute and injects a minimal first-boot script.
-- The first-boot script fetches a maintained bootstrap.sh from Git, which:
-  - Installs Ansible and must-have packages.
-  - Runs two local Ansible playbooks for disk setup and system security (UFW) so the host is safe early.
-  - Runs ansible-pull to fetch your full configuration from a Git repo (private or public) and apply it (e.g., playbook `ansible/deploy/site.yml`).
-- Secrets never live in the image or in Terraform templates: they’re passed via variables and dropped to root-only locations on the VM.
-- The whole flow is idempotent and repeatable. You can re-run ansible-pull at any time to converge drift.
+- Terraform provisions two VMs on Cudo Compute: **opennotebookserver** (primary) and **opennotebookweb**
+- Each VM runs the same `bootstrap.sh` script at first boot, but behavior differs based on environment variables set by Terraform
+- **Primary Server (opennotebookserver)**:
+  - Installs Docker directly
+  - Deploys the OpenNotebook container (`lfnovo/open_notebook:v1-latest-single`) with SurrealDB
+  - Exposes API on port 5055 and UI on port 8502
+- **Web Server (opennotebookweb)**:
+  - Clones the deployment Git repo
+  - Runs ansible-playbook to deploy the ainotebook Streamlit application
+  - Connects to primary server API via `API_BASE` environment variable
+- Secrets never live in the image or Terraform templates: they're passed via variables and dropped to root-only locations on the VM
+- The whole flow is idempotent and repeatable
 
 ---
 
 ## Repository Layout (high level)
 
 - `terraform/` – Infrastructure code for Cudo Compute
-  - `cudo_terraform.tf` – Provider and resources (VM + storage disk)
-  - `variables.tf` – All TF variables, including Ansible-pull configuration
-  - `templates/start_script.sh.tpl` – Tiny, rendered first-boot wrapper script
-  - `bootstrap.sh` – The main bootstrap; installs Ansible and triggers playbooks
+  - `cudo_terraform.tf` – Provider and resources (two VMs with boot disks only)
+  - `variables.tf` – All TF variables, including deployment configuration
+  - `templates/start_script.sh.tpl` – Cloud-init wrapper script that sets environment and runs bootstrap.sh
+  - `bootstrap.sh` – The main bootstrap; behavior differs based on ANSIBLE_PLAYBOOK env var
   - `secrets.auto.tfvars` – Local-only secrets and deploy-time values (ignored by Git)
-- `ansible/` – Your configuration-as-code, referenced by ansible-pull
-  - `deploy/site.yml` – Entry-point playbook executed by ansible-pull
-  - `roles/` – Role implementations (handlers, tasks, templates, files, etc.)
-  - `group_vars/`, `host_vars/` – Defaults and environment-specific variables
+- `ansible/` – Configuration-as-code for the web server deployment
+  - `deploy/site.yml` – Placeholder playbook for primary server (currently unused)
+  - `deploy/site_web.yml` – Entry-point playbook for web server (deploys ainotebook)
+  - `roles/ainotebook/` – Role that deploys the Streamlit application
+- `scripts/` – Helper scripts for Terraform setup
+  - `setup.sh` – Interactive script to generate secrets.auto.tfvars
 - `.gitignore` – Security-focused rules to avoid committing secrets
-
-> Note: `ansible/` lives in a Git repo that the VM pulls at boot. This repository may be the same one, or you can point Terraform to another repo via variables (recommended for separation of concerns).
 
 ---
 
 ## How Terraform Works Here
 
 Terraform creates:
-- A storage disk (for data)
-- A VM instance booted from a specified image (primary: opennotebook)
-- A second VM instance for the web app (opennotebookweb), with its own data disk
-- A first-boot "start script" rendered from `templates/start_script.sh.tpl` and injected via the provider
+- Two VM instances booted from Ubuntu 24.04 image:
+  - **opennotebookserver** (primary) - Runs OpenNotebook + SurrealDB in Docker
+  - **opennotebookweb** - Runs ainotebook Streamlit application
+- Each VM has only a boot disk (no separate data disks)
+- A first-boot "start script" rendered from `templates/start_script.sh.tpl` and injected via cloud-init
 
 That start script:
-1. Exports sensitive values (tokens, optional deploy SSH key for Git)
-2. Writes any provided certificates/keys to `/etc/bootstrap-secrets/` (root-only)
-3. Downloads `bootstrap.sh` from a Git URL you control (`bootstrap_url`) and executes it
+1. Sets environment variables that control bootstrap.sh behavior:
+   - `ANSIBLE_REPO_URL`, `ANSIBLE_REPO_REF`, `ANSIBLE_PLAYBOOK` - Which playbook to run (if any)
+   - `API_BASE` - URL for web server to connect to primary API
+   - `AINOTEBOOK_*` - Application-specific configuration
+2. Writes SSH deploy key to `/root/.ssh/id_rsa` (root-only, mode 600)
+3. Writes optional certificates/keys to `/etc/bootstrap-secrets/` (root-only)
+4. Downloads `bootstrap.sh` from a Git URL you control (`bootstrap_url`) and executes it
 
 ### Important Variables
 
@@ -139,24 +149,72 @@ If you later scale out to multiple VMs, parameterize and use `for_each` or `coun
 
 ---
 
-## What `bootstrap.sh` Does (and Why It’s Pulled From Git)
+## What `bootstrap.sh` Does (Architecture Overview)
 
-`bootstrap.sh` is the authoritative, version-controlled bootstrap. It’s downloaded at first boot from `bootstrap_url` so you can update behavior without rebuilding AMIs or editing long inline scripts in Terraform templates.
+`bootstrap.sh` is a unified, version-controlled bootstrap script that runs on **both** VMs but behaves differently based on the `ANSIBLE_PLAYBOOK` environment variable set by Terraform. It's downloaded at first boot from `bootstrap_url` so you can update deployment behavior without rebuilding images or editing long inline scripts in Terraform templates.
 
-High-level steps:
-1. Logging: Redirects stdout/stderr to `/root/postinstall.log` and console.
-2. Installs Ansible and prerequisites; installs the `community.general` collection.
-3. Emits and runs two local playbooks:
-   - Section 2: System Update & Firewall (apt update/upgrade, UFW allow 80/443, limit 22/tcp)
-   - Section 1: Disk Setup (create partition on `/dev/sdb`, format ext4, mount at `/opt/apt`, persist in `/etc/fstab`)
-4. Executes `ansible-pull` with repo/branch/playbook from Terraform variables. Clone path: `/root/ansible-src`.
-5. Exits with clear SUCCESS/ERROR messages in the log.
+### Common Steps (Both VMs)
 
-> Why ansible-pull? Because the playbooks remain in Git as source of truth, can be private, and are applied on the node, avoiding large cloud-init/user-data limits. Re-running is easy.
+1. **Logging Setup**: Redirects stdout/stderr to `/root/postinstall.log` for persistence
+2. **Environment Validation**: Checks HOME and USER are set (fixes cloud-init issues)
+3. **Unattended Upgrades**: Stops and disables to prevent apt lock conflicts during deployment
+4. **System Updates**: `apt update && apt upgrade -y`
+5. **UFW Firewall**:
+   - Allow ports: 80/tcp, 443/tcp, 8501/tcp (Streamlit), 5055/tcp (API), 8502/tcp (UI)
+   - Rate-limit SSH: `ufw limit 22/tcp`
+   - Enable firewall
+6. **SSH Key Setup**: Ensures `/root/.ssh/id_rsa` exists with correct permissions (600)
 
-Logs:
-- Primary: `/root/postinstall.log`
-- Ansible output: included in the same log and interactive console during bootstrap
+### Primary Server Only (ANSIBLE_PLAYBOOK="ansible/deploy/site.yml")
+
+**Deployment Method: Direct Docker Installation**
+
+7. **Docker Installation**:
+   - Installs Docker Engine via official apt repository
+   - Adds Docker GPG key and repository
+   - Installs `docker-ce`, `docker-ce-cli`, `containerd.io`
+   - Enables and starts Docker service
+
+8. **OpenNotebook Container Deployment**:
+   - Pulls `lfnovo/open_notebook:v1-latest-single` image
+   - Runs container with:
+     - Port mappings: `5055:5055` (API), `8502:8502` (UI)
+     - Environment variables:
+       - `API_URL=http://<server_ip>:5055`
+       - SurrealDB configuration (embedded database)
+     - Persistent volumes: `opennotebook-data`, `opennotebook-surreal`
+     - Restart policy: `unless-stopped`
+
+**Result**: OpenNotebook API accessible on port 5055, UI on port 8502
+
+### Web Server Only (ANSIBLE_PLAYBOOK="ansible/deploy/site_web.yml")
+
+**Deployment Method: Git Clone + Ansible Playbook**
+
+7. **Ansible Installation**:
+   - Installs `ansible-core` and `ansible` via apt
+   - Installs `community.general` collection
+
+8. **Repository Clone**:
+   - Clones `ANSIBLE_REPO_URL` to `/root/deploy_opennotebook`
+   - Checks out `ANSIBLE_REPO_REF` branch
+   - Uses SSH key from `/root/.ssh/id_rsa` (auto-detected by Git)
+
+9. **Ansible Playbook Execution**:
+   - Runs `ansible-playbook -vvvv` on `site_web.yml`
+   - Uses local inventory file
+   - Passes extra vars:
+     - `api_base` - URL to primary server API
+     - `ainotebook_*` - Application configuration
+   - Sets `DEBIAN_FRONTEND=noninteractive` to prevent prompts
+
+**Result**: ainotebook Streamlit app running on port 8501 as a systemd service
+
+### Logs
+
+- All output: `/root/postinstall.log`
+- Detailed ansible output with `-vvvv` verbosity
+- Clear SUCCESS/ERROR markers at the end of bootstrap execution
 
 ---
 
@@ -180,15 +238,20 @@ ansible/
     └── <hostname>.yml
 ```
 
-### Web VM (opennotebookweb): what gets deployed
+### Web VM (opennotebookweb): What Gets Deployed
 
-The `ainotebook` role:
-- Installs git, Python (pip/venv), and UFW
-- Clones `git@github.com:mightywomble/ainotebook.git` to `/opt/ainotebook`
-- Creates a Python venv and installs `requirements.txt` if present
-- Templates a systemd unit that runs: `streamlit run app.py --server.port 8501 --server.address 0.0.0.0`
-- Exposes `API_BASE` to the app via the unit Environment= line, coming from Terraform variable `api_base`
-- Enables and starts the service; opens UFW port 8501
+The `ainotebook` Ansible role deployed via `site_web.yml`:
+
+- **Dependencies**: Installs git, Python3, pip, virtualenv
+- **Repository**: Clones `ainotebook_repo_url` to `ainotebook_app_dir` (default: `/opt/ainotebook`)
+- **Virtual Environment**: Creates Python venv and installs `requirements.txt`
+- **Systemd Service**: Templates `ainotebook.service` that:
+  - Runs: `streamlit run app.py --server.port 8501 --server.address 0.0.0.0`
+  - Sets `Environment="API_BASE=http://<primary_ip>:5055"` for backend connectivity
+  - Runs as dedicated user with working directory in app folder
+- **Service Management**: Enables and starts the service with systemd
+
+**Connection Flow**: Web app (port 8501) → API_BASE → Primary server (port 5055) → SurrealDB (embedded)
 
 ### Idempotence
 - Modules like `apt`, `git`, `pip`, `mount`, `filesystem`, `community.general.parted`, and `systemd` are declarative.
@@ -287,23 +350,85 @@ During first boot, the VMs will:
 
 ## Verifying the Deployment
 
-SSH to the VM (from Cudo portal or your SSH key config) and run:
+### Primary Server (opennotebookserver)
+
+SSH to the VM and verify:
 
 ```bash
+# Check bootstrap log
 sudo tail -n 200 /root/postinstall.log
+
+# Verify Docker is running
+sudo systemctl status docker
+sudo docker ps  # Should show opennotebook container
+
+# Check OpenNotebook logs
+sudo docker logs opennotebook
+
+# Verify UFW firewall
 sudo ufw status verbose
-lsblk -f | grep -E "sdb|sdb1"
-mount | grep "/opt/apt"
+
+# Test API endpoint (replace with actual IP)
+curl http://localhost:5055/health  # or appropriate endpoint
 ```
 
-Re-run your configuration at any time:
+Access the OpenNotebook UI:
+- Open browser to `http://<primary_server_ip>:8502`
+
+### Web Server (opennotebookweb)
+
+SSH to the VM and verify:
 
 ```bash
-sudo ansible-pull \
-  -U "<same repo as TF variable>" \
-  -C "<same branch>" \
-  -d /root/ansible-src \
-  ansible/deploy/site.yml -i "localhost,"
+# Check bootstrap log
+sudo tail -n 200 /root/postinstall.log
+
+# Verify ainotebook service is running
+sudo systemctl status ainotebook.service
+
+# Check service logs
+sudo journalctl -u ainotebook.service -f
+
+# Verify UFW firewall
+sudo ufw status verbose
+
+# Verify cloned repositories
+ls -la /root/deploy_opennotebook/
+ls -la /opt/ainotebook/
+```
+
+Access the Streamlit web app:
+- Open browser to `http://<web_server_ip>:8501`
+
+### Re-running Deployments
+
+**Primary Server** (to redeploy OpenNotebook container):
+```bash
+# Stop and remove existing container
+sudo docker stop opennotebook
+sudo docker rm opennotebook
+
+# Re-run bootstrap or manually deploy new container
+sudo bash /root/postinstall.log  # Contains full bootstrap commands
+```
+
+**Web Server** (to update ainotebook app):
+```bash
+# Navigate to cloned repo
+cd /root/deploy_opennotebook
+
+# Update repo
+git pull origin main
+
+# Re-run ansible playbook
+sudo ansible-playbook -vvvv \
+  ansible/deploy/site_web.yml \
+  -i ansible/deploy/local.inventory \
+  --extra-vars "api_base=http://<primary_ip>:5055" \
+  --extra-vars "ainotebook_repo_url=git@github.com:mightywomble/ainotebook.git" \
+  --extra-vars "ainotebook_repo_ref=main" \
+  --extra-vars "ainotebook_app_dir=/opt/ainotebook" \
+  --extra-vars "ainotebook_streamlit_port=8501"
 ```
 
 ---
@@ -319,14 +444,58 @@ sudo ansible-pull \
 
 ## Troubleshooting
 
-- Nothing happens after apply:
+### Bootstrap Issues
+
+- **Nothing happens after apply**:
   - Check the Cudo console for VM status and serial/console logs
-  - Verify the start script rendered correctly (`terraform plan` output) and `bootstrap_url` is reachable
-- ansible-pull fails with auth:
-  - Ensure `ansible_repo_ssh_key` is set in `secrets.auto.tfvars` and the repo URL uses SSH
-  - Confirm Deploy Key is added to the Git repo and allowed to read
-- Disk not mounted:
-  - Verify the device path is correct (default `/dev/sdb`) and adjust in your repo if needed
+  - SSH to VM and check: `sudo cat /root/postinstall.log`
+  - Verify `bootstrap_url` is reachable: `curl -I <bootstrap_url>`
+
+- **Apt lock conflicts** ("Could not get lock /var/lib/dpkg/lock-frontend"):
+  - Bootstrap automatically stops `unattended-upgrades` to prevent this
+  - If it still occurs, wait a few minutes for cloud-init to complete, then re-run bootstrap
+
+### Primary Server Issues
+
+- **Docker fails to install**:
+  - Check: `sudo apt-cache policy docker-ce`
+  - Verify Docker GPG key and repository were added correctly
+  - Review: `/root/postinstall.log` for specific error messages
+
+- **OpenNotebook container fails to start**:
+  - Check logs: `sudo docker logs opennotebook`
+  - Verify image pulled correctly: `sudo docker images | grep open_notebook`
+  - Ensure ports 5055 and 8502 are not already in use: `sudo netstat -tlnp | grep -E '5055|8502'`
+
+- **Cannot access OpenNotebook UI**:
+  - Verify container is running: `sudo docker ps`
+  - Check UFW: `sudo ufw status` (should allow 5055, 8502)
+  - Test locally: `curl http://localhost:5055` from the server
+
+### Web Server Issues
+
+- **Ansible fails with Git auth errors**:
+  - Ensure `ansible_repo_ssh_key` is set in `secrets.auto.tfvars`
+  - Verify SSH key has correct permissions: `ls -la /root/.ssh/id_rsa` (should be 600)
+  - Confirm deploy key is added to GitHub repo with read access
+  - Test SSH: `ssh -T git@github.com` from the server
+
+- **Ansible playbook fails**:
+  - Check full output in `/root/postinstall.log` (includes `-vvvv` verbosity)
+  - Verify playbook path exists: `/root/deploy_opennotebook/ansible/deploy/site_web.yml`
+  - Manually run playbook to see interactive errors (see "Re-running Deployments" section)
+
+- **ainotebook service fails to start**:
+  - Check service status: `sudo systemctl status ainotebook.service`
+  - View logs: `sudo journalctl -u ainotebook.service -n 100`
+  - Verify Python dependencies: `source /opt/ainotebook/venv/bin/activate && pip list`
+  - Check API_BASE connectivity: `curl http://<primary_ip>:5055` from web server
+
+- **Cannot access Streamlit app**:
+  - Verify service is running: `sudo systemctl status ainotebook.service`
+  - Check UFW: `sudo ufw status` (should allow 8501)
+  - Test locally: `curl http://localhost:8501` from the server
+  - Verify API_BASE is correct in service environment: `sudo systemctl show ainotebook.service -p Environment`
 
 ---
 
