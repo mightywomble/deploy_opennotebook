@@ -215,8 +215,12 @@ INV
 
         log_action "Running ansible-pull with verbosity..."
         log_action "Command: ansible-pull -vvv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
-        log_action "Environment check: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-unset} HOME=${HOME} USER=${USER}"
+        log_action "Environment check: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-unset} HOME=${HOME:-/root} USER=${USER:-root}"
         log_action "GIT_SSH_COMMAND: ${GIT_SSH_COMMAND}"
+        
+        # Ensure HOME is set for ansible-pull
+        export HOME="${HOME:-/root}"
+        export USER="${USER:-root}"
         
         # Run ansible-pull with full verbosity to diagnose any hangs
         if ansible-pull -vvv \
