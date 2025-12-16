@@ -318,6 +318,34 @@ EOF
             echo "ansible-playbook location: $(which ansible-playbook)"
             log_action "==================================="
             
+            # Disable and stop unattended-upgrades to prevent apt lock conflicts
+            log_action "Disabling unattended-upgrades..."
+            systemctl stop unattended-upgrades 2>/dev/null || true
+            systemctl disable unattended-upgrades 2>/dev/null || true
+            killall unattended-upgrades 2>/dev/null || true
+            killall unattended-upgrade-shutdown 2>/dev/null || true
+            log_success "Unattended-upgrades disabled"
+            
+            # Wait for any remaining apt locks to be released
+            log_action "Checking for apt locks..."
+            local wait_count=0
+            while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+                  fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+                  fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+                if [ $wait_count -eq 0 ]; then
+                    log_action "Waiting for apt locks to be released..."
+                fi
+                wait_count=$((wait_count + 1))
+                if [ $wait_count -gt 30 ]; then
+                    log_action "WARNING: Apt still locked after 2.5 minutes, proceeding anyway..."
+                    break
+                fi
+                sleep 5
+            done
+            if [ $wait_count -gt 0 ]; then
+                log_success "Apt locks released after ${wait_count} attempts."
+            fi
+            
             log_action "Starting ansible-playbook execution (this may take several minutes)..."
             
             set +e
