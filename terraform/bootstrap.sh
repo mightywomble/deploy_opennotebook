@@ -38,7 +38,8 @@ if (( EUID != 0 )); then
 fi
 
 # Redirect all output (stdout and stderr) to the log file and console
-exec &> >(tee -a "$LOG_FILE")
+# Use simpler redirection that works in cloud-init non-interactive context
+exec >> "$LOG_FILE" 2>&1
 
 # --- Helper Functions ---
 log_action() {
@@ -237,17 +238,23 @@ INV
         export HOME="${HOME:-/root}"
         export USER="${USER:-root}"
         
-        # Use -vv for good balance: shows task details and output without massive JSON dumps
-        if ansible-pull -vv \
+        log_action "Executing ansible-pull now..."
+        
+        # Execute ansible-pull directly, capturing exit code
+        set +e  # Temporarily disable exit on error to capture exit code
+        ansible-pull -vv \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
           "${PLAYBOOK_PATH}" \
           -i "${INV_FILE}" \
-          --extra-vars "${EVARS}"; then
+          --extra-vars "${EVARS}"
+        local exit_code=$?
+        set -e  # Re-enable exit on error
+        
+        if [ $exit_code -eq 0 ]; then
             log_success "ansible-pull completed successfully."
         else
-            local exit_code=$?
             log_error_exit "ansible-pull failed with exit code ${exit_code}. Check logs above for details."
         fi
     else
