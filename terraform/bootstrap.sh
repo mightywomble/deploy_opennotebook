@@ -144,6 +144,21 @@ EOF
         
         log_action "ansible-pull: ${PLAYBOOK_PATH} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
         log_action "Detected playbook: ${PLAYBOOK_BASE}"
+        
+        log_action "=== Environment Variables Check ==="
+        echo "ANSIBLE_REPO_URL: ${ANSIBLE_REPO_URL}"
+        echo "ANSIBLE_REPO_REF: ${ANSIBLE_REPO_REF:-main}"
+        echo "ANSIBLE_PLAYBOOK: ${ANSIBLE_PLAYBOOK}"
+        echo "API_BASE: ${API_BASE:-unset}"
+        echo "AINOTEBOOK_REPO_URL: ${AINOTEBOOK_REPO_URL:-unset}"
+        echo "AINOTEBOOK_REPO_REF: ${AINOTEBOOK_REPO_REF:-unset}"
+        echo "AINOTEBOOK_APP_DIR: ${AINOTEBOOK_APP_DIR:-unset}"
+        echo "AINOTEBOOK_STREAMLIT_PORT: ${AINOTEBOOK_STREAMLIT_PORT:-unset}"
+        echo "AINOTEBOOK_SERVICE_NAME: ${AINOTEBOOK_SERVICE_NAME:-unset}"
+        echo "HOME: ${HOME:-unset}"
+        echo "USER: ${USER:-unset}"
+        echo "GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-unset}"
+        log_action "====================================="
 
         # Ensure SSH is configured for non-interactive git operations
         install -d -m 700 /root/.ssh || true
@@ -213,8 +228,8 @@ EOF
 localhost ansible_connection=local ansible_host=127.0.0.1
 INV
 
-        log_action "Running ansible-pull with verbosity..."
-        log_action "Command: ansible-pull -vvv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
+        log_action "Running ansible-pull..."
+        log_action "Command: ansible-pull -vv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
         log_action "Environment check: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-unset} HOME=${HOME:-/root} USER=${USER:-root}"
         log_action "GIT_SSH_COMMAND: ${GIT_SSH_COMMAND}"
         
@@ -222,8 +237,8 @@ INV
         export HOME="${HOME:-/root}"
         export USER="${USER:-root}"
         
-        # Run ansible-pull with full verbosity to diagnose any hangs
-        if ansible-pull -vvv \
+        # Use -vv for good balance: shows task details and output without massive JSON dumps
+        if ansible-pull -vv \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
