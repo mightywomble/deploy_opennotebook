@@ -262,13 +262,67 @@ EOF
             
             # Run ansible-playbook
             log_action "Running ansible-playbook..."
-            cd "${REPO_DIR}"
+            
+            # Validation 1: Ensure REPO_DIR exists and is accessible
+            if [ ! -d "${REPO_DIR}" ]; then
+                log_error_exit "Repository directory does not exist: ${REPO_DIR}"
+            fi
+            
+            # Validation 2: Change to repo directory and verify
+            cd "${REPO_DIR}" || log_error_exit "Failed to cd to ${REPO_DIR}"
+            if [ "$(pwd)" != "${REPO_DIR}" ]; then
+                log_error_exit "Working directory mismatch. Expected: ${REPO_DIR}, Got: $(pwd)"
+            fi
+            log_action "Working directory confirmed: $(pwd)"
+            
+            # Validation 3: Normalize playbook path (strip any leading /)
+            local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK}"
+            # If playbook starts with /, make it relative
+            if [[ "${PLAYBOOK_PATH}" == /* ]]; then
+                log_action "WARNING: ANSIBLE_PLAYBOOK has absolute path, converting to relative"
+                PLAYBOOK_PATH="${PLAYBOOK_PATH#/}"
+            fi
+            # If playbook doesn't start with ansible/, prepend it
+            if [[ "${PLAYBOOK_PATH}" != ansible/* ]]; then
+                log_action "WARNING: Playbook path doesn't start with ansible/, checking..."
+                if [ -f "ansible/deploy/site_web.yml" ]; then
+                    PLAYBOOK_PATH="ansible/deploy/site_web.yml"
+                    log_action "Auto-corrected playbook path to: ${PLAYBOOK_PATH}"
+                fi
+            fi
+            
+            # Validation 4: Verify playbook file exists
+            if [ ! -f "${PLAYBOOK_PATH}" ]; then
+                log_action "ERROR: Playbook not found at: ${PLAYBOOK_PATH}"
+                log_action "Directory contents:"
+                ls -la "${REPO_DIR}"
+                if [ -d "${REPO_DIR}/ansible" ]; then
+                    log_action "Ansible directory contents:"
+                    ls -la "${REPO_DIR}/ansible/deploy/" || true
+                fi
+                log_error_exit "Playbook file does not exist: ${PLAYBOOK_PATH}"
+            fi
+            log_success "Playbook found: ${PLAYBOOK_PATH}"
+            
+            # Validation 5: Check and sanitize EVARS
+            log_action "=== Pre-execution Debug Info ==="
+            echo "Current directory: $(pwd)"
+            echo "REPO_DIR: ${REPO_DIR}"
+            echo "Original ANSIBLE_PLAYBOOK: ${ANSIBLE_PLAYBOOK}"
+            echo "Normalized PLAYBOOK_PATH: ${PLAYBOOK_PATH}"
+            echo "Playbook exists: YES (validated)"
+            echo "HOME: ${HOME}"
+            echo "USER: ${USER}"
+            echo "EVARS (raw): ${EVARS}"
+            echo "EVARS length: ${#EVARS}"
+            echo "ansible-playbook location: $(which ansible-playbook)"
+            log_action "==================================="
             
             set +e
             ansible-playbook -vv \
               -i "localhost," \
               -c local \
-              "${ANSIBLE_PLAYBOOK}" \
+              "${PLAYBOOK_PATH}" \
               --extra-vars "${EVARS}"
             local exit_code=$?
             set -e

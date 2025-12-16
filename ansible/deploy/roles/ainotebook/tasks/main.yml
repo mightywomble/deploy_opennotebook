@@ -71,11 +71,3 @@
     name: "{{ ainotebook_service_name }}"
     enabled: true
     state: started
-
-- name: Open UFW port for Streamlit
-  ansible.builtin.command: ufw allow {{ ainotebook_streamlit_port }}/tcp
-  args:
-    warn: false
-  register: ufw_allow
-  changed_when: "'Skipping' not in ufw_allow.stdout"
-  failed_when: ufw_allow.rc != 0 and ('Skipping' not in ufw_allow.stdout)
