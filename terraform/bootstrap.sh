@@ -150,12 +150,28 @@ EOF
         if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS="$EVARS ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
         if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS="$EVARS ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
         if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS="$EVARS ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
+
+        # Ensure roles path includes both ansible/roles and ansible/deploy/roles
+        export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles:/etc/ansible/roles:/usr/share/ansible/roles"
+
+        # Choose inventory: if playbook is site.yml (hosts: open_notebook_server), map that host to localhost
+        local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}"
+        local PLAYBOOK_BASE
+        PLAYBOOK_BASE="$(basename "$PLAYBOOK_PATH")"
+        local INV_ARG
+        if [[ "$PLAYBOOK_BASE" == "site.yml" ]]; then
+          echo "open_notebook_server ansible_connection=local ansible_host=127.0.0.1" > "${REPO_DIR}/local.inventory"
+          INV_ARG=( -i "${REPO_DIR}/local.inventory" )
+        else
+          INV_ARG=( -i "localhost," )
+        fi
+
         ansible-pull \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
-          "${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}" \
-          -i "localhost," \
+          "$PLAYBOOK_PATH" \
+          "${INV_ARG[@]}" \
           --extra-vars "$EVARS" || log_error_exit "ansible-pull failed."
         log_success "ansible-pull completed."
     else
