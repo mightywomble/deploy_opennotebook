@@ -152,10 +152,13 @@ EOF
             ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true
         fi
         
-        # Set GIT_SSH_COMMAND if not already set (from start_script.sh.tpl)
-        if [ -z "${GIT_SSH_COMMAND:-}" ]; then
+        # Respect GIT_SSH_COMMAND from start_script.sh.tpl if set (points to id_ansible)
+        if [ -n "${GIT_SSH_COMMAND:-}" ]; then
+          log_action "Using GIT_SSH_COMMAND from environment: ${GIT_SSH_COMMAND}"
+        else
+          # Fallback if no custom key was provided
           export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
-          log_action "Set GIT_SSH_COMMAND for non-interactive git"
+          log_action "Set default GIT_SSH_COMMAND for non-interactive git"
         fi
 
         # Clean stale repo directory if it exists but isn't a valid git repo
@@ -216,10 +219,10 @@ localhost ansible_connection=local ansible_host=127.0.0.1
 INV
 
         log_action "Running ansible-pull with verbosity..."
-        log_action "Command: ansible-pull -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
+        log_action "Command: ansible-pull -vvv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
         
-        # Run ansible-pull with full error handling
-        if ansible-pull -vv \
+        # Run ansible-pull with full error handling (use -vvv for detailed output)
+        if ansible-pull -vvv \
           -U "${ANSIBLE_REPO_URL}" \
           -C "${ANSIBLE_REPO_REF:-main}" \
           -d "${REPO_DIR}" \
