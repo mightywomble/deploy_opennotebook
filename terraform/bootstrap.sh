@@ -142,15 +142,34 @@ EOF
         log_action "ansible-pull: ${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
         # Build extra-vars string
         local EVARS="ansible_python_interpreter=/usr/bin/python3"
-        if [[ -n "${API_BASE:-}" ]]; then
-          EVARS="$EVARS api_base=${API_BASE}"
+
+        # If API_BASE is empty or a placeholder containing '<', derive for primary (site.yml) from local IP; otherwise leave empty for web
+        if [[ -z "${API_BASE:-}" || "${API_BASE}" == *"<"* || "${API_BASE}" == *">"* ]]; then
+          if [[ "${PLAYBOOK_BASE}" == "site.yml" ]]; then
+            local LOCAL_IP
+            LOCAL_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+            if [[ -z "${LOCAL_IP}" ]]; then
+              LOCAL_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/{print $7; exit}')"
+            fi
+            if [[ -n "${LOCAL_IP}" ]]; then
+              API_BASE="http://${LOCAL_IP}:5055"
+            else
+              API_BASE=""
+            fi
+          else
+            API_BASE=""
+          fi
         fi
+        if [[ -n "${API_BASE:-}" ]]; then
+          EVARS+=" api_base=${API_BASE}"
+        fi
+
         # ainotebook settings (for web VM; harmless on primary)
-        if [[ -n "${AINOTEBOOK_REPO_URL:-}" ]]; then EVARS="$EVARS ainotebook_repo_url=${AINOTEBOOK_REPO_URL}"; fi
-        if [[ -n "${AINOTEBOOK_REPO_REF:-}" ]]; then EVARS="$EVARS ainotebook_repo_ref=${AINOTEBOOK_REPO_REF}"; fi
-        if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS="$EVARS ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
-        if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS="$EVARS ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
-        if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS="$EVARS ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
+        if [[ -n "${AINOTEBOOK_REPO_URL:-}" ]]; then EVARS+=" ainotebook_repo_url=${AINOTEBOOK_REPO_URL}"; fi
+        if [[ -n "${AINOTEBOOK_REPO_REF:-}" ]]; then EVARS+=" ainotebook_repo_ref=${AINOTEBOOK_REPO_REF}"; fi
+        if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS+=" ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
+        if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS+=" ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
+        if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS+=" ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
 
         # Ensure roles path includes both ansible/roles and ansible/deploy/roles
         export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles:/etc/ansible/roles:/usr/share/ansible/roles"
@@ -168,7 +187,10 @@ EOF
         PLAYBOOK_BASE="$(basename "$PLAYBOOK_PATH")"
         local INV_ARG
         if [[ "$PLAYBOOK_BASE" == "site.yml" ]]; then
-          echo "open_notebook_server ansible_connection=local ansible_host=127.0.0.1" > "${REPO_DIR}/local.inventory"
+          cat > "${REPO_DIR}/local.inventory" <<'INV'
+[open_notebook_server]
+localhost ansible_connection=local ansible_host=127.0.0.1
+INV
           INV_ARG=( -i "${REPO_DIR}/local.inventory" )
         else
           INV_ARG=( -i "localhost," )
