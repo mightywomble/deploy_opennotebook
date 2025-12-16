@@ -140,6 +140,12 @@ EOF
         local REPO_DIR="/root/ansible-src"
         mkdir -p "${REPO_DIR}" 2>/dev/null || true
         log_action "ansible-pull: ${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
+
+        # Determine playbook path early (needed for api_base derivation and inventory)
+        local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}"
+        local PLAYBOOK_BASE
+        PLAYBOOK_BASE="$(basename "$PLAYBOOK_PATH")"
+
         # Build extra-vars string
         local EVARS="ansible_python_interpreter=/usr/bin/python3"
 
@@ -182,9 +188,6 @@ EOF
         fi
 
         # Choose inventory: if playbook is site.yml (hosts: open_notebook_server), map that host to localhost
-        local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}"
-        local PLAYBOOK_BASE
-        PLAYBOOK_BASE="$(basename "$PLAYBOOK_PATH")"
         local INV_ARG
         if [[ "$PLAYBOOK_BASE" == "site.yml" ]]; then
           cat > "${REPO_DIR}/local.inventory" <<'INV'
