@@ -74,11 +74,11 @@ export AINOTEBOOK_SERVICE_NAME="${ainotebook_service_name}"
 if [ -n "${ansible_repo_ssh_key}" ]; then
   install -d -m 700 /root/.ssh
   umask 077
-  cat > /root/.ssh/id_ansible <<'ANSIBLE_SSH_KEY'
+  cat > /root/.ssh/id_rsa <<'ANSIBLE_SSH_KEY'
 ${ansible_repo_ssh_key}
 ANSIBLE_SSH_KEY
-  chmod 600 /root/.ssh/id_ansible
-  export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_ansible -o StrictHostKeyChecking=no"
+  chmod 600 /root/.ssh/id_rsa
+  # No need to set GIT_SSH_COMMAND - Git will use id_rsa automatically
 fi
 
 # Download and execute bootstrap.sh from the provided URL

@@ -152,14 +152,9 @@ EOF
             ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true
         fi
         
-        # Respect GIT_SSH_COMMAND from start_script.sh.tpl if set (points to id_ansible)
-        if [ -n "${GIT_SSH_COMMAND:-}" ]; then
-          log_action "Using GIT_SSH_COMMAND from environment: ${GIT_SSH_COMMAND}"
-        else
-          # Fallback if no custom key was provided
-          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
-          log_action "Set default GIT_SSH_COMMAND for non-interactive git"
-        fi
+        # Set GIT_SSH_COMMAND for non-interactive git (id_rsa will be used automatically)
+        export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
+        log_action "Set GIT_SSH_COMMAND for non-interactive git operations"
 
         # Clean stale repo directory if it exists but isn't a valid git repo
         if [ -d "${REPO_DIR}" ]; then
