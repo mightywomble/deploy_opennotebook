@@ -246,7 +246,7 @@ EOF
                 cd "${REPO_DIR}"
                 git checkout "${ANSIBLE_REPO_REF:-main}" || log_error_exit "Failed to checkout ${ANSIBLE_REPO_REF:-main}"
             fi
-            
+
             log_success "Repository ready at ${REPO_DIR}"
             
             # Build extra-vars for web server
@@ -325,7 +325,8 @@ EOF
             killall unattended-upgrades 2>/dev/null || true
             killall unattended-upgrade-shutdown 2>/dev/null || true
             log_success "Unattended-upgrades disabled"
-            
+            apt install python3-venv -y
+
             # Wait for any remaining apt locks to be released
             log_action "Checking for apt locks..."
             local wait_count=0
