@@ -136,129 +136,155 @@ EOF
     log_success "System update & firewall configured."
 
 
-    # 3) Pull and run repo playbook if configured
-    if [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
-        local REPO_DIR="/root/ansible-src"
-        local PLAYBOOK_PATH="${ANSIBLE_PLAYBOOK:-ansible/deploy/site.yml}"
+    # 3) Deploy application based on playbook type
+    if [[ -n "${ANSIBLE_PLAYBOOK:-}" ]]; then
         local PLAYBOOK_BASE
-        PLAYBOOK_BASE="$(basename "$PLAYBOOK_PATH")"
+        PLAYBOOK_BASE="$(basename "${ANSIBLE_PLAYBOOK}")"
         
-        log_action "ansible-pull: ${PLAYBOOK_PATH} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
-        log_action "Detected playbook: ${PLAYBOOK_BASE}"
-        
-        log_action "=== Environment Variables Check ==="
-        echo "ANSIBLE_REPO_URL: ${ANSIBLE_REPO_URL}"
-        echo "ANSIBLE_REPO_REF: ${ANSIBLE_REPO_REF:-main}"
-        echo "ANSIBLE_PLAYBOOK: ${ANSIBLE_PLAYBOOK}"
-        echo "API_BASE: ${API_BASE:-unset}"
-        echo "AINOTEBOOK_REPO_URL: ${AINOTEBOOK_REPO_URL:-unset}"
-        echo "AINOTEBOOK_REPO_REF: ${AINOTEBOOK_REPO_REF:-unset}"
-        echo "AINOTEBOOK_APP_DIR: ${AINOTEBOOK_APP_DIR:-unset}"
-        echo "AINOTEBOOK_STREAMLIT_PORT: ${AINOTEBOOK_STREAMLIT_PORT:-unset}"
-        echo "AINOTEBOOK_SERVICE_NAME: ${AINOTEBOOK_SERVICE_NAME:-unset}"
-        echo "HOME: ${HOME:-unset}"
-        echo "USER: ${USER:-unset}"
-        echo "GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-unset}"
-        log_action "====================================="
-
-        # Ensure SSH is configured for non-interactive git operations
-        install -d -m 700 /root/.ssh || true
-        if [ ! -f /root/.ssh/known_hosts ] || ! grep -q github.com /root/.ssh/known_hosts; then
-            log_action "Adding GitHub host key..."
-            ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true
-        fi
-        
-        # Set GIT_SSH_COMMAND for non-interactive git (id_rsa will be used automatically)
-        export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
-        log_action "Set GIT_SSH_COMMAND for non-interactive git operations"
-
-        # Clean stale repo directory if it exists but isn't a valid git repo
-        if [ -d "${REPO_DIR}" ]; then
-            if [ ! -d "${REPO_DIR}/.git" ]; then
-                log_action "Removing stale non-git directory: ${REPO_DIR}"
-                rm -rf "${REPO_DIR}"
+        if [[ "${PLAYBOOK_BASE}" == "site.yml" ]]; then
+            # Primary server: Install Docker and OpenNotebook directly
+            log_action "Primary server detected - deploying Docker and OpenNotebook"
+            
+            # Check if Docker is already installed
+            if command -v docker &> /dev/null; then
+                log_action "Docker is already installed"
             else
-                log_action "Found existing git repo at ${REPO_DIR}"
+                log_action "Installing Docker..."
+                
+                # Install prerequisites
+                apt-get install -y ca-certificates curl gnupg lsb-release || log_error_exit "Failed to install Docker prerequisites"
+                
+                # Add Docker's official GPG key
+                install -m 0755 -d /etc/apt/keyrings
+                curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                chmod a+r /etc/apt/keyrings/docker.gpg
+                
+                # Set up the repository
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+                
+                # Install Docker Engine
+                apt-get update -qq
+                apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || log_error_exit "Failed to install Docker"
+                
+                # Start and enable Docker
+                systemctl enable docker
+                systemctl start docker
+                
+                log_success "Docker installed successfully"
             fi
-        fi
-
-        # Ensure roles path includes both ansible/roles and ansible/deploy/roles
-        export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles:/etc/ansible/roles:/usr/share/ansible/roles"
-        log_action "Set ANSIBLE_ROLES_PATH: ${ANSIBLE_ROLES_PATH}"
-
-        # Build extra-vars
-        local EVARS="ansible_python_interpreter=/usr/bin/python3"
-
-        # Derive API_BASE intelligently based on playbook
-        if [[ -z "${API_BASE:-}" || "${API_BASE}" == *"<"* || "${API_BASE}" == *">"* ]]; then
-          if [[ "${PLAYBOOK_BASE}" == "site.yml" ]]; then
-            # Primary server: derive from local IP
-            local LOCAL_IP
-            LOCAL_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-            if [[ -z "${LOCAL_IP}" ]]; then
-              LOCAL_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/{print $7; exit}')"
+            
+            # Check if OpenNotebook container is already running
+            if docker ps --format '{{.Names}}' | grep -q '^opennotebook$'; then
+                log_action "OpenNotebook container is already running"
+            else
+                log_action "Deploying OpenNotebook container..."
+                
+                # Stop and remove any existing container
+                docker stop opennotebook 2>/dev/null || true
+                docker rm opennotebook 2>/dev/null || true
+                
+                # Pull and run OpenNotebook
+                docker pull lfnovo/open_notebook:v1-latest-single || log_error_exit "Failed to pull OpenNotebook image"
+                
+                # Get server IP for API_URL
+                local SERVER_IP
+                SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+                if [[ -z "${SERVER_IP}" ]]; then
+                    SERVER_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/{print $7; exit}')"
+                fi
+                
+                docker run -d \
+                  --name opennotebook \
+                  --restart unless-stopped \
+                  -p 5055:5055 \
+                  -p 8502:8502 \
+                  -e API_URL="http://${SERVER_IP}:5055" \
+                  -e SURREAL_URL="ws://localhost:8000/rpc" \
+                  -e SURREAL_USER="root" \
+                  -e SURREAL_PASSWORD="root" \
+                  -e SURREAL_NAMESPACE="open_notebook" \
+                  -e SURREAL_DATABASE="production" \
+                  -v opennotebook-data:/app/data \
+                  -v opennotebook-surreal:/mydata \
+                  lfnovo/open_notebook:v1-latest-single || log_error_exit "Failed to start OpenNotebook container"
+                
+                log_success "OpenNotebook deployed successfully on http://${SERVER_IP}:8502"
             fi
-            if [[ -n "${LOCAL_IP}" ]]; then
-              API_BASE="http://${LOCAL_IP}:5055"
-              log_action "Derived API_BASE for primary: ${API_BASE}"
-            fi
-          else
-            # Web server: API_BASE should be set by Terraform to point to primary
-            log_action "Web server detected; API_BASE should be set externally"
-          fi
-        else
-          log_action "Using provided API_BASE: ${API_BASE}"
-        fi
+            
+            # Show container status
+            log_action "Container status:"
+            docker ps --filter name=opennotebook --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            
+        elif [[ "${PLAYBOOK_BASE}" == "site_web.yml" ]] && [[ -n "${ANSIBLE_REPO_URL:-}" ]]; then
+            # Web server: Use ansible-pull
+            local REPO_DIR="/root/ansible-src"
+            
+            log_action "Web server detected - using ansible-pull for deployment"
+            log_action "ansible-pull: ${ANSIBLE_PLAYBOOK} from ${ANSIBLE_REPO_URL} (ref ${ANSIBLE_REPO_REF:-main})"
         
-        if [[ -n "${API_BASE:-}" ]]; then
-          EVARS+=" api_base=${API_BASE}"
-        fi
+            log_action "=== Environment Variables Check ==="
+            echo "ANSIBLE_REPO_URL: ${ANSIBLE_REPO_URL}"
+            echo "ANSIBLE_REPO_REF: ${ANSIBLE_REPO_REF:-main}"
+            echo "ANSIBLE_PLAYBOOK: ${ANSIBLE_PLAYBOOK}"
+            echo "API_BASE: ${API_BASE:-unset}"
+            log_action "====================================="
 
-        # ainotebook settings (for web VM; harmless on primary)
-        if [[ -n "${AINOTEBOOK_REPO_URL:-}" ]]; then EVARS+=" ainotebook_repo_url=${AINOTEBOOK_REPO_URL}"; fi
-        if [[ -n "${AINOTEBOOK_REPO_REF:-}" ]]; then EVARS+=" ainotebook_repo_ref=${AINOTEBOOK_REPO_REF}"; fi
-        if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS+=" ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
-        if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS+=" ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
-        if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS+=" ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
+            # Ensure SSH is configured
+            install -d -m 700 /root/.ssh || true
+            if [ ! -f /root/.ssh/known_hosts ] || ! grep -q github.com /root/.ssh/known_hosts; then
+                log_action "Adding GitHub host key..."
+                ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true
+            fi
+            
+            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
+            export HOME="${HOME:-/root}"
+            export USER="${USER:-root}"
+            
+            # Clean stale repo
+            if [ -d "${REPO_DIR}" ] && [ ! -d "${REPO_DIR}/.git" ]; then
+                rm -rf "${REPO_DIR}"
+            fi
 
-        # Simple inventory: both playbooks target localhost
-        log_action "Creating inventory for ${PLAYBOOK_BASE} (hosts: localhost)"
-        local INV_FILE="/root/ansible.inventory"
-        cat > "${INV_FILE}" <<'INV'
+            export ANSIBLE_ROLES_PATH="${REPO_DIR}/ansible/roles:${REPO_DIR}/ansible/deploy/roles"
+
+            # Build extra-vars for web server
+            local EVARS="ansible_python_interpreter=/usr/bin/python3"
+            if [[ -n "${API_BASE:-}" ]]; then EVARS+=" api_base=${API_BASE}"; fi
+            if [[ -n "${AINOTEBOOK_REPO_URL:-}" ]]; then EVARS+=" ainotebook_repo_url=${AINOTEBOOK_REPO_URL}"; fi
+            if [[ -n "${AINOTEBOOK_REPO_REF:-}" ]]; then EVARS+=" ainotebook_repo_ref=${AINOTEBOOK_REPO_REF}"; fi
+            if [[ -n "${AINOTEBOOK_APP_DIR:-}" ]]; then EVARS+=" ainotebook_app_dir=${AINOTEBOOK_APP_DIR}"; fi
+            if [[ -n "${AINOTEBOOK_STREAMLIT_PORT:-}" ]]; then EVARS+=" ainotebook_streamlit_port=${AINOTEBOOK_STREAMLIT_PORT}"; fi
+            if [[ -n "${AINOTEBOOK_SERVICE_NAME:-}" ]]; then EVARS+=" ainotebook_service_name=${AINOTEBOOK_SERVICE_NAME}"; fi
+
+            # Create inventory
+            local INV_FILE="/root/ansible.inventory"
+            cat > "${INV_FILE}" <<'INV'
 [all]
 localhost ansible_connection=local ansible_host=127.0.0.1
 INV
 
-        log_action "Running ansible-pull..."
-        log_action "Command: ansible-pull -vv -U ${ANSIBLE_REPO_URL} -C ${ANSIBLE_REPO_REF:-main} -d ${REPO_DIR} ${PLAYBOOK_PATH} -i ${INV_FILE}"
-        log_action "Environment check: SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-unset} HOME=${HOME:-/root} USER=${USER:-root}"
-        log_action "GIT_SSH_COMMAND: ${GIT_SSH_COMMAND}"
-        
-        # Ensure HOME is set for ansible-pull
-        export HOME="${HOME:-/root}"
-        export USER="${USER:-root}"
-        
-        log_action "Executing ansible-pull now..."
-        
-        # Execute ansible-pull directly, capturing exit code
-        set +e  # Temporarily disable exit on error to capture exit code
-        ansible-pull -vv \
-          -U "${ANSIBLE_REPO_URL}" \
-          -C "${ANSIBLE_REPO_REF:-main}" \
-          -d "${REPO_DIR}" \
-          "${PLAYBOOK_PATH}" \
-          -i "${INV_FILE}" \
-          --extra-vars "${EVARS}"
-        local exit_code=$?
-        set -e  # Re-enable exit on error
-        
-        if [ $exit_code -eq 0 ]; then
-            log_success "ansible-pull completed successfully."
+            log_action "Executing ansible-pull..."
+            set +e
+            ansible-pull -vv \
+              -U "${ANSIBLE_REPO_URL}" \
+              -C "${ANSIBLE_REPO_REF:-main}" \
+              -d "${REPO_DIR}" \
+              "${ANSIBLE_PLAYBOOK}" \
+              -i "${INV_FILE}" \
+              --extra-vars "${EVARS}"
+            local exit_code=$?
+            set -e
+            
+            if [ $exit_code -eq 0 ]; then
+                log_success "ansible-pull completed successfully."
+            else
+                log_error_exit "ansible-pull failed with exit code ${exit_code}."
+            fi
         else
-            log_error_exit "ansible-pull failed with exit code ${exit_code}. Check logs above for details."
+            log_action "Unknown playbook: ${PLAYBOOK_BASE}"
         fi
     else
-        log_action "ANSIBLE_REPO_URL not set; skipping ansible-pull."
+        log_action "ANSIBLE_PLAYBOOK not set; skipping deployment."
     fi
 
     log_action "--- Script Finished ---"
